@@ -16,3 +16,9 @@ App/Resources/Models/
 
 # macOS
 .DS_Store
+
+# Internal working docs (kept local, not published)
+CLAUDE.md
+CONTEXT.md
+DESIGN.md
+VERIFY.md
