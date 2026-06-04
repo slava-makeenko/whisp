@@ -1,0 +1,111 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <filter id="outerShadow" x="18" y="18" width="988" height="988" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="18" stdDeviation="26" flood-color="#000000" flood-opacity="0.55"/>
+      <feDropShadow dx="0" dy="0" stdDeviation="5" flood-color="#FFFFFF" flood-opacity="0.45"/>
+    </filter>
+
+    <filter id="barShadow" x="154" y="220" width="720" height="610" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="8" stdDeviation="9" flood-color="#000000" flood-opacity="0.5"/>
+      <feDropShadow dx="0" dy="-1" stdDeviation="1.5" flood-color="#FFFFFF" flood-opacity="0.18"/>
+    </filter>
+
+    <linearGradient id="pastelTop" x1="118" y1="143" x2="884" y2="578" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="0.22" stop-color="#E8DAFF"/>
+      <stop offset="0.43" stop-color="#FFDFF0"/>
+      <stop offset="0.66" stop-color="#FFF1DE"/>
+      <stop offset="1" stop-color="#C8FFF0"/>
+    </linearGradient>
+
+    <radialGradient id="topHighlight" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(512 124) rotate(90) scale(390 610)">
+      <stop stop-color="#FFFFFF" stop-opacity="0.95"/>
+      <stop offset="0.45" stop-color="#FFFFFF" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
+
+    <linearGradient id="bottomBlack" x1="512" y1="488" x2="512" y2="950" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1D2025"/>
+      <stop offset="0.62" stop-color="#111317"/>
+      <stop offset="1" stop-color="#07080A"/>
+    </linearGradient>
+
+    <linearGradient id="barDark" x1="512" y1="238" x2="512" y2="826" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#282B31"/>
+      <stop offset="0.38" stop-color="#111317"/>
+      <stop offset="1" stop-color="#050607"/>
+    </linearGradient>
+
+    <linearGradient id="barLight" x1="512" y1="506" x2="512" y2="824" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF"/>
+      <stop offset="0.58" stop-color="#F9FAFA"/>
+      <stop offset="1" stop-color="#D8D9DA"/>
+    </linearGradient>
+
+    <linearGradient id="rim" x1="145" y1="105" x2="864" y2="918" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF" stop-opacity="0.96"/>
+      <stop offset="0.14" stop-color="#DDE1EA" stop-opacity="0.78"/>
+      <stop offset="0.55" stop-color="#FFFFFF" stop-opacity="0.2"/>
+      <stop offset="0.86" stop-color="#8F98A4" stop-opacity="0.82"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0.58"/>
+    </linearGradient>
+
+    <clipPath id="iconClip">
+      <rect x="68" y="68" width="888" height="888" rx="196"/>
+    </clipPath>
+
+    <clipPath id="topClip">
+      <path d="M68 68H956V502C875 588 765 525 676 525C545 525 442 604 292 607C204 609 130 578 68 548V68Z"/>
+    </clipPath>
+
+    <clipPath id="bottomClip">
+      <path d="M68 548C130 578 204 609 292 607C442 604 545 525 676 525C765 525 875 588 956 502V956H68V548Z"/>
+    </clipPath>
+  </defs>
+
+  <rect width="1024" height="1024" fill="#000000"/>
+
+  <g filter="url(#outerShadow)">
+    <g clip-path="url(#iconClip)">
+      <rect x="68" y="68" width="888" height="888" rx="196" fill="url(#pastelTop)"/>
+      <rect x="68" y="68" width="888" height="888" rx="196" fill="url(#topHighlight)"/>
+
+      <g clip-path="url(#bottomClip)">
+        <rect x="68" y="454" width="888" height="502" fill="url(#bottomBlack)"/>
+        <ellipse cx="526" cy="964" rx="382" ry="90" fill="#FFFFFF" opacity="0.08"/>
+      </g>
+
+      <path d="M68 548C130 578 204 609 292 607C442 604 545 525 676 525C765 525 875 588 956 502" stroke="#FFFFFF" stroke-opacity="0.72" stroke-width="3"/>
+<path d="M72 540C140 586 218 612 312 604C444 596 551 519 675 516C775 513 870 576 952 492" stroke="#FFFFFF" stroke-opacity="0.22" stroke-width="18"/>
+
+      <g filter="url(#barShadow)">
+        <g clip-path="url(#topClip)">
+          <rect x="204" y="512" width="40" height="140" rx="20" fill="url(#barDark)"/>
+          <rect x="273" y="462" width="40" height="214" rx="20" fill="url(#barDark)"/>
+          <rect x="344" y="401" width="42" height="312" rx="21" fill="url(#barDark)"/>
+          <rect x="417" y="327" width="44" height="448" rx="22" fill="url(#barDark)"/>
+          <rect x="490" y="239" width="44" height="588" rx="22" fill="url(#barDark)"/>
+          <rect x="565" y="342" width="42" height="433" rx="21" fill="url(#barDark)"/>
+          <rect x="638" y="424" width="40" height="289" rx="20" fill="url(#barDark)"/>
+          <rect x="711" y="471" width="40" height="206" rx="20" fill="url(#barDark)"/>
+          <rect x="782" y="558" width="38" height="94" rx="19" fill="url(#barDark)"/>
+        </g>
+
+        <g clip-path="url(#bottomClip)">
+          <rect x="204" y="512" width="40" height="140" rx="20" fill="url(#barLight)"/>
+          <rect x="273" y="462" width="40" height="214" rx="20" fill="url(#barLight)"/>
+          <rect x="344" y="401" width="42" height="312" rx="21" fill="url(#barLight)"/>
+          <rect x="417" y="327" width="44" height="448" rx="22" fill="url(#barLight)"/>
+          <rect x="490" y="239" width="44" height="588" rx="22" fill="url(#barLight)"/>
+          <rect x="565" y="342" width="42" height="433" rx="21" fill="url(#barLight)"/>
+          <rect x="638" y="424" width="40" height="289" rx="20" fill="url(#barLight)"/>
+          <rect x="711" y="471" width="40" height="206" rx="20" fill="url(#barLight)"/>
+          <rect x="782" y="558" width="38" height="94" rx="19" fill="url(#barLight)"/>
+        </g>
+      </g>
+
+      <rect x="72" y="72" width="880" height="880" rx="192" stroke="url(#rim)" stroke-width="8"/>
+      <rect x="86" y="86" width="852" height="852" rx="180" stroke="#FFFFFF" stroke-opacity="0.22" stroke-width="3"/>
+    </g>
+  </g>
+</svg>

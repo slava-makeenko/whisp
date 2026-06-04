@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key>
+    <string>whisp</string>
+    <key>CFBundleIdentifier</key>
+    <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+    <key>CFBundleShortVersionString</key>
+    <string>$(MARKETING_VERSION)</string>
+    <key>CFBundleVersion</key>
+    <string>$(CURRENT_PROJECT_VERSION)</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>en</string>
+    <key>CFBundleLocalizations</key>
+    <array>
+        <string>en</string>
+        <string>ru</string>
+    </array>
+    <key>LSMinimumSystemVersion</key>
+    <string>14.4</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>whisp transcribes your speech on-device.</string>
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>whisp uses on-device speech recognition to transcribe audio.</string>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>whisp detects the active browser tab to switch Power Mode profiles.</string>
+    <key>NSHumanReadableCopyright</key>
+    <string>© 2026</string>
+    <!-- Sparkle updater — P4: real appcast URL + base64 EdDSA public key -->
+    <key>SUFeedURL</key>
+    <string>https://example.com/whisp/appcast.xml</string>
+    <key>SUPublicEDKey</key>
+    <string></string>
+    <key>SUEnableAutomaticChecks</key>
+    <true/>
+</dict>
+</plist>

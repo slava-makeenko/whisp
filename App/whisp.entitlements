@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!--
+      Non-sandboxed, Hardened Runtime, Developer ID build.
+      App Sandbox is intentionally absent: CGEventTap, arbitrary AX injection, private
+      MediaRemote and AppleScript automation are incompatible with it.
+      iCloud/CloudKit entitlements are added in Phase 8 (needs P3: container id + Team id).
+    -->
+</dict>
+</plist>

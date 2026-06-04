@@ -1,0 +1,18 @@
+# SwiftPM
+.build/
+.swiftpm/
+Package.resolved
+
+# XcodeGen output (regenerate from project.yml)
+*.xcodeproj/
+
+# Xcode
+DerivedData/
+*.xcuserstate
+xcuserdata/
+
+# Models / large assets fetched at runtime
+App/Resources/Models/
+
+# macOS
+.DS_Store
