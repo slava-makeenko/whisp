@@ -320,9 +320,54 @@ struct DashboardView: View {
 
             if store.activeModel != nil {
                 Divider().overlay(Theme.hairline)
-                AIInfoRow(icon: "character.book.closed", label: "Language",
-                          value: DictationLanguage.summary(dictationLanguages))
-                AIInfoRow(icon: "wand.and.stars", label: "Mode", value: currentMode.name)
+                // Language — tappable menu
+                HStack {
+                    Image(systemName: "character.book.closed")
+                        .font(.system(size: 12)).foregroundStyle(Theme.secondaryText).frame(width: 16)
+                    Text("Language").font(.system(size: 12)).foregroundStyle(Theme.secondaryText)
+                    Spacer()
+                    Menu {
+                        ForEach(DictationLanguage.all) { lang in
+                            Toggle(lang.name, isOn: Binding(
+                                get: { DictationLanguage.selectedIDs(dictationLanguages).contains(lang.id) },
+                                set: { _ in dictationLanguages = DictationLanguage.toggle(lang.id, in: dictationLanguages) }))
+                        }
+                    } label: {
+                        HStack(spacing: 3) {
+                            Text(DictationLanguage.summary(dictationLanguages))
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(Theme.primaryText)
+                            Image(systemName: "chevron.up.chevron.down")
+                                .font(.system(size: 8)).foregroundStyle(Theme.secondaryText)
+                        }
+                    }
+                    .menuStyle(.borderlessButton).fixedSize().pointingCursor()
+                }
+
+                // Mode — tappable menu
+                HStack {
+                    Image(systemName: "wand.and.stars")
+                        .font(.system(size: 12)).foregroundStyle(Theme.secondaryText).frame(width: 16)
+                    Text("Mode").font(.system(size: 12)).foregroundStyle(Theme.secondaryText)
+                    Spacer()
+                    Menu {
+                        ForEach(EnhancementStyle.allCases) { style in
+                            Toggle(LocalizedStringKey(style.name), isOn: Binding(
+                                get: { enhancementStyle == style.rawValue },
+                                set: { if $0 { enhancementStyle = style.rawValue } }))
+                        }
+                    } label: {
+                        HStack(spacing: 3) {
+                            Text(LocalizedStringKey(currentMode.name))
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(Theme.primaryText)
+                            Image(systemName: "chevron.up.chevron.down")
+                                .font(.system(size: 8)).foregroundStyle(Theme.secondaryText)
+                        }
+                    }
+                    .menuStyle(.borderlessButton).fixedSize().pointingCursor()
+                }
+
                 AIInfoRow(icon: "lock.shield", label: "Privacy", value: "Local")
             }
 
