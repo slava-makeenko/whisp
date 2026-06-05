@@ -68,21 +68,19 @@ struct SettingsView: View {
     }
 
     var body: some View {
-        HStack(spacing: 0) {
-            categorySidebar
+        VStack(spacing: 0) {
+            categoryTabBar
             Divider().overlay(Theme.hairline)
             ScrollView {
                 VStack(alignment: .leading, spacing: 26) {
-                    Text(category.title)
-                        .font(.system(size: 30, weight: .regular, design: .serif))
-                        .foregroundStyle(Theme.primaryText)
                     content
                 }
                 .padding(34)
                 .frame(maxWidth: 760, alignment: .leading)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .background(Theme.cardBG)
+            .background(Theme.windowBG)
+            .scrollContentBackground(.hidden)
         }
         .background(Theme.windowBG)
         .onAppear {
@@ -92,40 +90,28 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: - Category sidebar
+    // MARK: - Category tab bar
 
-    private var categorySidebar: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text("SETTINGS")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(Theme.secondaryText)
-                .padding(.horizontal, 12).padding(.top, 6).padding(.bottom, 8)
-            ForEach(SettingsCategory.allCases) { categoryRow($0) }
+    private var categoryTabBar: some View {
+        HStack(spacing: 0) {
+            ForEach(SettingsCategory.allCases) { cat in
+                SettingsCategoryTab(
+                    cat: cat,
+                    selected: category == cat,
+                    accent: Theme.accent
+                ) {
+                    withAnimation(.easeInOut(duration: 0.15)) { category = cat }
+                }
+            }
             Spacer()
             Text(versionString)
-                .font(.system(size: 12))
+                .font(.system(size: 11))
                 .foregroundStyle(Theme.secondaryText)
-                .padding(.horizontal, 12).padding(.bottom, 4)
+                .padding(.trailing, 20)
         }
-        .padding(14)
-        .frame(width: 214)
-        .frame(maxHeight: .infinity, alignment: .top)
+        .padding(.horizontal, 8)
+        .frame(height: 46)
         .background(Theme.windowBG)
-    }
-
-    private func categoryRow(_ cat: SettingsCategory) -> some View {
-        Button { category = cat } label: {
-            HStack(spacing: 11) {
-                Image(systemName: cat.symbol).font(.system(size: 14)).frame(width: 22)
-                Text(cat.title).font(.system(size: 15, weight: category == cat ? .semibold : .regular))
-                Spacer(minLength: 0)
-            }
-            .foregroundStyle(category == cat ? Theme.primaryText : Theme.secondaryText)
-            .padding(.horizontal, 12).padding(.vertical, 8)
-            .background(category == cat ? Theme.selection : .clear, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain).pointingCursor()
     }
 
     private var versionString: String {
@@ -443,6 +429,41 @@ struct SettingsView: View {
 }
 
 // MARK: - Wispr-style settings components
+
+/// A single tab button in the Settings tab bar.
+private struct SettingsCategoryTab: View {
+    let cat: SettingsView.SettingsCategory
+    let selected: Bool
+    let accent: Color
+    let action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 3) {
+                HStack(spacing: 5) {
+                    Image(systemName: cat.symbol)
+                        .font(.system(size: 12, weight: selected ? .semibold : .regular))
+                    Text(cat.title)
+                        .font(.system(size: 13, weight: selected ? .semibold : .regular))
+                }
+                .foregroundStyle(
+                    selected ? Theme.primaryText
+                             : (hovering ? Theme.primaryText.opacity(0.7) : Theme.secondaryText))
+
+                // Accent underline for selected tab
+                RoundedRectangle(cornerRadius: 1.5)
+                    .fill(selected ? accent : .clear)
+                    .frame(height: 2)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 5)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0; if $0 { NSCursor.pointingHand.push() } else { NSCursor.pop() } }
+    }
+}
 
 /// A rounded group that holds setting rows — adapts fill to light/dark mode.
 private struct SettingsGroup<Content: View>: View {
