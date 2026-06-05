@@ -40,14 +40,17 @@ struct RootView: View {
     var body: some View {
         NavigationSplitView {
             sidebar
+                .padding(.top, 28)
                 .navigationSplitViewColumnWidth(min: 210, ideal: 224, max: 280)
         } detail: {
             detail
+                .padding(.top, 8)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Theme.windowBG)
         }
         .navigationSplitViewStyle(.balanced)
         .toolbar(.hidden, for: .windowToolbar)
+        .ignoresSafeArea(.all, edges: .top)
         .tint((AccentPalette(rawValue: accentColor) ?? .violet).color)
         .fontDesign((AppFontStyle(rawValue: fontStyle) ?? .system).design)
         .preferredColorScheme(preferredScheme)
