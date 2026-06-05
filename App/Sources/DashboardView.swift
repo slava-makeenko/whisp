@@ -263,49 +263,77 @@ struct DashboardView: View {
     // MARK: - Files
 
     private var filesSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("TRANSCRIBE FILES")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(Theme.secondaryText)
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("TRANSCRIBE FILES")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Theme.secondaryText)
+                Spacer()
+                Button {
+                    pickFiles()
+                } label: {
+                    Label("Add File", systemImage: "plus")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(Theme.accent)
+                }
+                .buttonStyle(.plain)
+                .pointingCursor()
+            }
+
+            // Drop zone — uses onDrop with NSItemProvider to reliably receive Finder files.
             RoundedRectangle(cornerRadius: 12)
                 .strokeBorder(style: StrokeStyle(lineWidth: dropTargeted ? 2 : 1.5, dash: [6]))
-                .foregroundStyle(dropTargeted ? AnyShapeStyle(Theme.accent) : AnyShapeStyle(Theme.secondaryText.opacity(0.5)))
-                .frame(height: 56)
+                .foregroundStyle(dropTargeted ? AnyShapeStyle(Theme.accent)
+                                             : AnyShapeStyle(Theme.secondaryText.opacity(0.4)))
+                .frame(height: 52)
                 .background(dropTargeted ? AnyShapeStyle(Theme.accentSoft) : AnyShapeStyle(.clear),
-                           in: RoundedRectangle(cornerRadius: 12))
+                            in: RoundedRectangle(cornerRadius: 12))
                 .overlay {
-                    Text(dropTargeted ? "Release to transcribe" : "Drop audio files here")
-                        .foregroundStyle(Theme.secondaryText).font(.callout)
+                    HStack(spacing: 6) {
+                        Image(systemName: "arrow.down.circle").font(.system(size: 14))
+                        Text(dropTargeted ? "Release to transcribe" : "Drop audio files here")
+                            .font(.callout)
+                    }
+                    .foregroundStyle(dropTargeted ? Theme.accent : Theme.secondaryText)
                 }
                 .scaleEffect(dropTargeted ? 1.02 : 1)
                 .animation(.spring(response: 0.3, dampingFraction: 0.7), value: dropTargeted)
-                .dropDestination(for: URL.self) { urls, _ in
-                    fileQueue.enqueue(urls)
+                .onDrop(of: [.fileURL], isTargeted: $dropTargeted) { providers in
+                    loadURLs(from: providers)
                     return true
-                } isTargeted: { dropTargeted = $0 }
-
-            ForEach(fileQueue.jobs) { job in
-                HStack {
-                    Text(job.url.lastPathComponent).lineLimit(1).foregroundStyle(Theme.primaryText)
-                    Spacer()
-                    jobBadge(job.state)
                 }
-                .font(.caption)
-                .transition(.move(edge: .top).combined(with: .opacity))
+
+            if !fileQueue.jobs.isEmpty {
+                VStack(spacing: 0) {
+                    ForEach(fileQueue.jobs) { job in
+                        if job.id != fileQueue.jobs.first?.id { Divider().overlay(Theme.hairline) }
+                        FileJobRow(job: job)
+                    }
+                }
+                .wispCard(padding: 0)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .wispCard()
-        .animation(.default, value: fileQueue.jobs)
+        .animation(.default, value: fileQueue.jobs.map(\.id))
     }
 
-    @ViewBuilder
-    private func jobBadge(_ state: TranscriptionJob.State) -> some View {
-        switch state {
-        case .queued:  Text("Queued").foregroundStyle(Theme.secondaryText)
-        case .running: ProgressView().controlSize(.small)
-        case .done:    Text("Done").foregroundStyle(.green)
-        case .failed:  Text("Failed").foregroundStyle(.red)
+    /// Opens a system file picker for audio files.
+    private func pickFiles() {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = false
+        panel.allowedContentTypes = [.audio, .mpeg4Audio, .mp3, .wav, .aiff]
+        if panel.runModal() == .OK { fileQueue.enqueue(panel.urls) }
+    }
+
+    /// Extracts file URLs from NSItemProviders (the drop payload from Finder).
+    private func loadURLs(from providers: [NSItemProvider]) {
+        for provider in providers {
+            provider.loadItem(forTypeIdentifier: "public.file-url", options: nil) { item, _ in
+                guard let data = item as? Data,
+                      let url = URL(dataRepresentation: data, relativeTo: nil) else { return }
+                DispatchQueue.main.async { self.fileQueue.enqueue([url]) }
+            }
         }
     }
 
@@ -351,6 +379,92 @@ struct DashboardView: View {
     private static func elapsed(from start: Date, to now: Date) -> String {
         let total = max(0, Int(now.timeIntervalSince(start)))
         return String(format: "%d:%02d", total / 60, total % 60)
+    }
+}
+
+private struct FileJobRow: View {
+    let job: TranscriptionJob
+    @State private var expanded = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 10) {
+                Image(systemName: iconName)
+                    .font(.system(size: 13))
+                    .foregroundStyle(iconColor)
+                    .frame(width: 18)
+
+                Text(job.url.lastPathComponent)
+                    .font(.system(size: 13))
+                    .foregroundStyle(Theme.primaryText)
+                    .lineLimit(1)
+
+                Spacer()
+
+                switch job.state {
+                case .queued:
+                    Text("Queued")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Theme.secondaryText)
+                case .running:
+                    ProgressView().controlSize(.small)
+                case .done(let text):
+                    HStack(spacing: 8) {
+                        Button { expanded.toggle() } label: {
+                            Text(expanded ? "Hide" : "Show")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(Theme.accent)
+                        }
+                        .buttonStyle(.plain).pointingCursor()
+
+                        Button { copy(text) } label: {
+                            Image(systemName: "doc.on.doc")
+                                .font(.system(size: 12))
+                                .foregroundStyle(Theme.secondaryText)
+                        }
+                        .buttonStyle(.plain).pointingCursor()
+                        .help("Copy text")
+                    }
+                case .failed:
+                    Text("Failed")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.red)
+                }
+            }
+            .padding(.horizontal, 16).padding(.vertical, 12)
+
+            if expanded, case .done(let text) = job.state {
+                Text(text)
+                    .font(.system(size: 13))
+                    .foregroundStyle(Theme.primaryText)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 16).padding(.bottom, 12)
+            }
+        }
+    }
+
+    private var iconName: String {
+        switch job.state {
+        case .queued:  "clock"
+        case .running: "waveform"
+        case .done:    "checkmark.circle.fill"
+        case .failed:  "xmark.circle.fill"
+        }
+    }
+
+    private var iconColor: Color {
+        switch job.state {
+        case .queued:  Theme.secondaryText
+        case .running: Theme.accent
+        case .done:    .green
+        case .failed:  .red
+        }
+    }
+
+    private func copy(_ text: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
     }
 }
 
