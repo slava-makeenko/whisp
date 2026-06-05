@@ -1,5 +1,6 @@
 import Foundation
 import AVFoundation
+import CoreAudio
 
 public enum CaptureError: Error, Sendable {
     case formatUnavailable
@@ -53,6 +54,14 @@ public actor AVAudioEngineCapturer: AudioCapturer {
             levelsCont.yield(chunk.rms())
         }
 
+        // Pin the input to the built-in microphone so Bluetooth headphones are never
+        // switched from A2DP (stereo output) to HFP (headset profile, mono) during capture.
+        // Without this, AVAudioEngine picks the system default input, which can be the
+        // headset mic — triggering a profile switch that macOS doesn't always reverse.
+        if let builtInID = Self.builtInInputDeviceID() {
+            pinInputDevice(builtInID)
+        }
+
         engine.prepare()
         do {
             try engine.start()
@@ -70,6 +79,60 @@ public actor AVAudioEngineCapturer: AudioCapturer {
         engine.inputNode.removeTap(onBus: 0)
         audioContinuation?.finish()
         audioContinuation = nil
+    }
+
+    /// Sets the HAL audio unit's current device to `deviceID`, overriding the system default.
+    /// Must be called after `engine.inputNode` exists and before `engine.prepare()`.
+    private func pinInputDevice(_ deviceID: AudioDeviceID) {
+        guard let au = engine.inputNode.audioUnit else { return }
+        var id = deviceID
+        AudioUnitSetProperty(au,
+                             kAudioOutputUnitProperty_CurrentDevice,
+                             kAudioUnitScope_Global,
+                             0, &id,
+                             UInt32(MemoryLayout<AudioDeviceID>.size))
+    }
+
+    /// Searches all CoreAudio devices for the first built-in device that has input channels.
+    /// Returns `nil` if none found (e.g. Mac mini with no built-in mic), in which case
+    /// we fall back to the system default.
+    private static func builtInInputDeviceID() -> AudioDeviceID? {
+        var addr = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDevices,
+                                             mScope: kAudioObjectPropertyScopeGlobal,
+                                             mElement: kAudioObjectPropertyElementMain)
+        var size: UInt32 = 0
+        guard AudioObjectGetPropertyDataSize(AudioObjectID(kAudioObjectSystemObject),
+                                            &addr, 0, nil, &size) == noErr, size > 0 else { return nil }
+        let count = Int(size) / MemoryLayout<AudioDeviceID>.size
+        var ids = [AudioDeviceID](repeating: 0, count: count)
+        guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject),
+                                        &addr, 0, nil, &size, &ids) == noErr else { return nil }
+
+        for id in ids {
+            // Only consider built-in transport (not USB, Bluetooth, virtual, etc.)
+            var tAddr = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyTransportType,
+                                                  mScope: kAudioObjectPropertyScopeGlobal,
+                                                  mElement: kAudioObjectPropertyElementMain)
+            var transport: UInt32 = 0; var tSize = UInt32(MemoryLayout<UInt32>.size)
+            guard AudioObjectGetPropertyData(id, &tAddr, 0, nil, &tSize, &transport) == noErr,
+                  transport == kAudioDeviceTransportTypeBuiltIn else { continue }
+
+            // Confirm it actually has input channels
+            var iAddr = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyStreamConfiguration,
+                                                  mScope: kAudioObjectPropertyScopeInput,
+                                                  mElement: kAudioObjectPropertyElementMain)
+            var iSize: UInt32 = 0
+            guard AudioObjectGetPropertyDataSize(id, &iAddr, 0, nil, &iSize) == noErr,
+                  iSize >= UInt32(MemoryLayout<AudioBufferList>.size) else { continue }
+            let ptr = UnsafeMutableRawPointer.allocate(byteCount: Int(iSize),
+                                                       alignment: MemoryLayout<AudioBufferList>.alignment)
+            defer { ptr.deallocate() }
+            guard AudioObjectGetPropertyData(id, &iAddr, 0, nil, &iSize, ptr) == noErr else { continue }
+            let bl = ptr.load(as: AudioBufferList.self)
+            guard bl.mNumberBuffers > 0 else { continue }
+            return id
+        }
+        return nil
     }
 }
 

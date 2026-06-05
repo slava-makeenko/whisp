@@ -31,6 +31,11 @@ struct WhispApp: App {
     private let modifierMonitor = ModifierTapMonitor()
     private let notchRecorder = NotchRecorderController()
     private let contextProvider = WorkspaceContextProvider()
+    // Held as properties so they stay alive during async playback.
+    // NSSound(named:) returns a shared cached instance — calling stop() before play()
+    // resets it so the sound fires reliably every time (not just every other time).
+    private let soundStart: NSSound? = NSSound(named: "Pop")
+    private let soundStop: NSSound? = NSSound(named: "Bottle")
     private let powerMode: PowerModeManager
     private let historyStore: HistoryStore
     private let metricsStore: MetricsStore
@@ -111,10 +116,11 @@ struct WhispApp: App {
                 return try? await URLSessionLLMEnhancer(apiKey: key)
                     .enhance(selection, prompt: prompt, provider: provider.llmProvider(model: model))
             },
-            onCue: { cue in
+            onCue: { [soundStart, soundStop] cue in
                 guard UserDefaults.standard.object(forKey: "playSoundCues") as? Bool ?? true else { return }
-                let sound = NSSound(named: cue == .start ? "Pop" : "Bottle")
+                let sound = cue == .start ? soundStart : soundStop
                 sound?.volume = 0.5
+                sound?.stop()   // reset so play() always fires, even if previous instance hasn't finished
                 sound?.play()
             })
         _controller = State(initialValue: controller)

@@ -44,10 +44,14 @@ final class NotchRecorderController {
         }
     }
 
+    // Fixed pill dimensions — must match the frame modifiers in NotchRecorderView.
+    private let pillW: CGFloat = 96
+    private let pillH: CGFloat = 36
+
     private func show() {
         if panel == nil {
             let panel = NSPanel(
-                contentRect: NSRect(x: 0, y: 0, width: 96, height: 36),
+                contentRect: NSRect(x: 0, y: 0, width: pillW, height: pillH),
                 styleMask: [.borderless, .nonactivatingPanel],
                 backing: .buffered, defer: false)
             panel.isFloatingPanel = true
@@ -58,11 +62,20 @@ final class NotchRecorderController {
             panel.ignoresMouseEvents = true
             panel.hidesOnDeactivate = false
             panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
-            panel.contentViewController = NSHostingController(rootView: NotchRecorderView())
+            let hc = NSHostingController(rootView: NotchRecorderView())
+            // Lock the hosting controller to our pill size so it never causes the panel
+            // to resize before SwiftUI has laid out (which would break the first-show position).
+            hc.view.setFrameSize(NSSize(width: pillW, height: pillH))
+            panel.contentViewController = hc
             self.panel = panel
         }
+        // Position using known constants — panel.frame.size is unreliable before first layout.
         if let panel { position(panel) }
         panel?.orderFrontRegardless()
+        // Re-position one run-loop tick later in case the window server moved it on first display.
+        if let panel {
+            DispatchQueue.main.async { self.position(panel) }
+        }
     }
 
     private func hide() { panel?.orderOut(nil) }
@@ -70,10 +83,9 @@ final class NotchRecorderController {
     private func position(_ panel: NSPanel) {
         let screen = NSScreen.screens.first { $0.safeAreaInsets.top > 0 } ?? NSScreen.main
         guard let screen else { return }
-        let size = panel.frame.size
         let menuBar = max(screen.safeAreaInsets.top, NSStatusBar.system.thickness)
-        panel.setFrameOrigin(NSPoint(x: screen.frame.midX - size.width / 2,
-                                     y: screen.frame.maxY - menuBar - size.height - 8))
+        panel.setFrameOrigin(NSPoint(x: screen.frame.midX - pillW / 2,
+                                     y: screen.frame.maxY - menuBar - pillH - 8))
     }
 }
 
