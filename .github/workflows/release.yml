@@ -1,0 +1,81 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: write
+
+jobs:
+  build-dmg:
+    name: Build & Publish DMG
+    runs-on: macos-15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select latest Xcode
+        run: |
+          XCODE=$(ls /Applications | grep 'Xcode_' | sort -V | tail -1)
+          sudo xcode-select -s "/Applications/$XCODE/Contents/Developer"
+          xcodebuild -version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Build Release
+        run: |
+          xcodebuild -project whisp.xcodeproj \
+            -scheme whisp \
+            -configuration Release \
+            -destination 'platform=macOS' \
+            CODE_SIGNING_ALLOWED=NO \
+            SWIFT_ACTIVE_COMPILATION_CONDITIONS="LOCAL_BUILD" \
+            build
+
+      - name: Package DMG
+        run: |
+          APP=$(find ~/Library/Developer/Xcode/DerivedData -name whisp.app \
+            -path '*/Build/Products/Release/*' | grep -v Index.noindex | head -1)
+          echo "Packaging: $APP"
+
+          STAGE=$(mktemp -d)
+          cp -R "$APP" "$STAGE/whisp.app"
+          ln -s /Applications "$STAGE/Applications"
+
+          VERSION="${GITHUB_REF_NAME#v}"
+          DMG="whisp-${VERSION}.dmg"
+
+          hdiutil create \
+            -volname "whisp" \
+            -srcfolder "$STAGE" \
+            -ov \
+            -format UDZO \
+            -o "$DMG"
+
+          hdiutil verify "$DMG"
+          echo "DMG_PATH=$DMG"   >> "$GITHUB_ENV"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: whisp ${{ env.VERSION }}
+          tag_name: ${{ github.ref_name }}
+          files: ${{ env.DMG_PATH }}
+          draft: false
+          prerelease: ${{ contains(github.ref_name, 'beta') || contains(github.ref_name, 'alpha') }}
+          generate_release_notes: true
+          body: |
+            ## Installation
+
+            1. Download `whisp-${{ env.VERSION }}.dmg` below.
+            2. Open the DMG and drag **whisp** to **Applications**.
+            3. On first launch, right-click → **Open** to bypass Gatekeeper
+               (the app is unsigned — a Developer ID certificate is needed for
+               automatic trust; notarization is planned for a future release).
+            4. Grant **Microphone** and **Accessibility** when prompted.
