@@ -32,18 +32,17 @@ struct RootView: View {
         }
     }
 
-    private var accentColor_: Color { (AccentPalette(rawValue: accentColor) ?? .violet).color }
-
     var body: some View {
-        VStack(spacing: 0) {
-            tabBar
-            Divider().overlay(Theme.hairline)
-            content
+        NavigationSplitView {
+            sidebar
+                .navigationSplitViewColumnWidth(min: 210, ideal: 224, max: 280)
+        } detail: {
+            detail
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Theme.windowBG)
         }
-        .background(Theme.windowBG)
-        .tint(accentColor_)
+        .navigationSplitViewStyle(.balanced)
+        .tint((AccentPalette(rawValue: accentColor) ?? .violet).color)
         .fontDesign((AppFontStyle(rawValue: fontStyle) ?? .system).design)
         .preferredColorScheme(preferredScheme)
         .wispWindowChrome()
@@ -52,49 +51,43 @@ struct RootView: View {
         }
     }
 
-    // MARK: - Tab bar
+    // MARK: - Sidebar
 
-    private var tabBar: some View {
-        HStack(spacing: 0) {
-            // App logo — left-aligned, offset to clear the traffic lights (~72 pt)
-            HStack(spacing: 7) {
+    private var sidebar: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 8) {
                 Image("MenuBarIcon")
-                    .resizable().renderingMode(.template)
-                    .frame(width: 16, height: 16)
+                    .resizable().renderingMode(.template).frame(width: 19, height: 19)
                     .foregroundStyle(Theme.primaryText)
                 Text("whisp")
-                    .font(.system(size: 15, weight: .bold))
+                    .font(.system(size: 19, weight: .bold))
                     .foregroundStyle(Theme.primaryText)
             }
-            .padding(.leading, 80)
+            .padding(.horizontal, 10).padding(.top, 4).padding(.bottom, 16)
 
-            Spacer()
-
-            // Centered tabs
-            HStack(spacing: 0) {
-                ForEach(Section.allCases) { section in
-                    TopTab(label: LocalizedStringKey(section.rawValue),
-                           symbol: section.symbol,
-                           selected: selection == section,
-                           accent: accentColor_) {
-                        withAnimation(.easeInOut(duration: 0.18)) { selection = section }
-                    }
-                }
+            ForEach([Section.dashboard, .history, .powerMode]) { section in
+                SidebarRow(title: section.rawValue, symbol: section.symbol,
+                           selected: selection == section) { selection = section }
             }
 
             Spacer()
 
-            // Mirror of the logo area so tabs stay centered
-            Color.clear.frame(width: 100)
+            SidebarRow(title: "Settings", symbol: "gearshape",
+                       selected: selection == .settings) { selection = .settings }
+            SidebarRow(title: "Help", symbol: "questionmark.circle", selected: false) {
+                if let url = URL(string: "https://github.com/slava-makeenko/whisp") {
+                    NSWorkspace.shared.open(url)
+                }
+            }
         }
-        .frame(height: 42)
-        .padding(.top, 28)   // clear macOS traffic-light row
+        .padding(10)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(Theme.windowBG)
     }
 
-    // MARK: - Content
+    // MARK: - Detail
 
-    @ViewBuilder private var content: some View {
+    @ViewBuilder private var detail: some View {
         switch selection {
         case .dashboard: DashboardView()
         case .history:   HistoryView()
@@ -104,35 +97,31 @@ struct RootView: View {
     }
 }
 
-// MARK: - Top tab button
+// MARK: - Sidebar row
 
-private struct TopTab: View {
-    let label: LocalizedStringKey
+private struct SidebarRow: View {
+    let title: String
     let symbol: String
     let selected: Bool
-    let accent: Color
     let action: () -> Void
-
     @State private var hovering = false
 
     var body: some View {
         Button(action: action) {
-            VStack(spacing: 3) {
-                HStack(spacing: 6) {
-                    Image(systemName: symbol)
-                        .font(.system(size: 12, weight: selected ? .semibold : .regular))
-                    Text(label)
-                        .font(.system(size: 13, weight: selected ? .semibold : .regular))
-                }
-                .foregroundStyle(selected ? Theme.primaryText : (hovering ? Theme.primaryText.opacity(0.75) : Theme.secondaryText))
-
-                // Underline indicator
-                RoundedRectangle(cornerRadius: 1.5)
-                    .fill(selected ? accent : .clear)
-                    .frame(height: 2)
+            HStack(spacing: 11) {
+                Image(systemName: symbol)
+                    .font(.system(size: 15))
+                    .frame(width: 20)
+                Text(LocalizedStringKey(title))
+                    .font(.system(size: 14, weight: selected ? .semibold : .regular))
+                Spacer(minLength: 0)
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 6)
+            .foregroundStyle(selected ? Theme.primaryText : Theme.secondaryText)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(
+                selected ? Theme.selection : (hovering ? Theme.selection.opacity(0.5) : .clear),
+                in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
