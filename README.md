@@ -1,11 +1,29 @@
 <p align="center">
-  <img src="docs/icon.png" width="120" alt="whisp app icon">
+  <img src="docs/icon.png" width="128" alt="whisp">
 </p>
 
 <h1 align="center">whisp</h1>
 
-<p align="center"><b>Fast, private, on-device dictation for macOS.</b></p>
-<p align="center">Hold a key, speak, and your words appear in whatever app you're using.</p>
+<p align="center">
+  <b>Fast, private, on-device dictation for macOS.</b><br>
+  Hold a key, speak, and your words appear in whatever app you're using.
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/platform-macOS%2014%2B-lightgray?style=flat-square&logo=apple&logoColor=white&labelColor=555555" alt="macOS 14+">
+  &nbsp;
+  <img src="https://img.shields.io/github/v/release/slava-makeenko/whisp?style=flat-square&label=release&color=007AFF" alt="Release">
+  &nbsp;
+  <img src="https://img.shields.io/github/downloads/slava-makeenko/whisp/total?style=flat-square&label=downloads&color=34C759" alt="Downloads">
+  &nbsp;
+  <img src="https://img.shields.io/github/stars/slava-makeenko/whisp?style=flat-square&color=FF9F0A" alt="Stars">
+</p>
+
+<p align="center">
+  <a href="https://github.com/slava-makeenko/whisp/releases/latest">
+    <img src="https://img.shields.io/badge/%E2%AC%87%20Download-Latest%20Release-007AFF?style=for-the-badge&logo=apple&logoColor=white&labelColor=3a3a3a" alt="Download Latest Release">
+  </a>
+</p>
 
 ---
 
