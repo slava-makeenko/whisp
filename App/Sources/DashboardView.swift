@@ -42,7 +42,9 @@ struct DashboardView: View {
                 recentSection
                 filesSection
             }
-            .padding(20)
+            .padding(.horizontal, 20)
+            .padding(.bottom, 20)
+            .padding(.top, 8)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .scrollContentBackground(.hidden)

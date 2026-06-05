@@ -37,7 +37,7 @@ struct HistoryView: View {
                     }
                 }
             }
-            .padding(28)
+            .padding(.horizontal, 28).padding(.bottom, 28).padding(.top, 8)
             .frame(maxWidth: 860, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .leading)
         }

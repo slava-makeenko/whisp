@@ -48,7 +48,6 @@ struct RootView: View {
         }
         .navigationSplitViewStyle(.balanced)
         .toolbar(.hidden, for: .windowToolbar)
-        .ignoresSafeArea(.all, edges: .top)
         .tint((AccentPalette(rawValue: accentColor) ?? .violet).color)
         .fontDesign((AppFontStyle(rawValue: fontStyle) ?? .system).design)
         .preferredColorScheme(preferredScheme)

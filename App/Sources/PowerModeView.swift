@@ -62,7 +62,7 @@ struct PowerModeView: View {
 
                 CardCaption("In Auto mode, dictating into one of these apps uses its style instead of the per-app heuristic. A specific mode (chosen on Home or in the menu bar) overrides Auto entirely. Only text is sent to an LLM — never audio.")
             }
-            .padding(28)
+            .padding(.horizontal, 28).padding(.bottom, 28).padding(.top, 8)
             .frame(maxWidth: 760, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .leading)
         }

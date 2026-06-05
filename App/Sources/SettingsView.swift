@@ -76,7 +76,7 @@ struct SettingsView: View {
                 VStack(alignment: .leading, spacing: 26) {
                     content
                 }
-                .padding(34)
+                .padding(.horizontal, 34).padding(.bottom, 34).padding(.top, 8)
                 .frame(maxWidth: 760, alignment: .leading)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
