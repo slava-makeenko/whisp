@@ -21,7 +21,16 @@ struct RootView: View {
     @State private var selection: Section = .dashboard
     @AppStorage("accentColor") private var accentColor = "violet"
     @AppStorage("fontStyle") private var fontStyle = "system"
+    @AppStorage("colorScheme") private var colorSchemeRaw = "system"
     @Environment(\.openWindow) private var openWindow
+
+    private var preferredScheme: ColorScheme? {
+        switch colorSchemeRaw {
+        case "light": return .light
+        case "dark":  return .dark
+        default:      return nil
+        }
+    }
 
     var body: some View {
         NavigationSplitView {
@@ -35,8 +44,7 @@ struct RootView: View {
         .navigationSplitViewStyle(.balanced)
         .tint((AccentPalette(rawValue: accentColor) ?? .violet).color)
         .fontDesign((AppFontStyle(rawValue: fontStyle) ?? .system).design)
-        .preferredColorScheme(.light)   // the cream theme is light-only; without this, system controls
-                                        // (segmented/menu pickers) render dark-mode white text → invisible
+        .preferredColorScheme(preferredScheme)
         .wispWindowChrome()
     }
 

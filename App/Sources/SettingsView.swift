@@ -23,6 +23,7 @@ struct SettingsView: View {
     @AppStorage("appLanguage") private var appLanguage = "system"
     @AppStorage("accentColor") private var accentColor = "violet"
     @AppStorage("fontStyle") private var fontStyle = "system"
+    @AppStorage("colorScheme") private var colorSchemeRaw = "system"
     @AppStorage("enhancementProvider") private var enhancementProviderID = "openai"
     @AppStorage("enhancementModel") private var enhancementModel = ""
     @AppStorage("enhancementPrompt") private var enhancementPrompt = "Clean up grammar and punctuation."
@@ -81,9 +82,9 @@ struct SettingsView: View {
                 .frame(maxWidth: 760, alignment: .leading)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .background(Color.white)
+            .background(Theme.cardBG)
         }
-        .background(Color.white)
+        .background(Theme.windowBG)
         .onAppear {
             apiKey = ((try? keychain.get(enhancementProvider.secretKey)) ?? nil) ?? ""
             licenseKey = ((try? keychain.get(.licenseKey)) ?? nil) ?? ""
@@ -204,6 +205,15 @@ struct SettingsView: View {
                     WispValueMenu(selection: $appLanguage, options: [
                         ("system", "System"), ("en", "English"), ("ru", "Русский"),
                     ])
+                }
+                RowDivider()
+                SettingRow("Color scheme", description: "Light, dark, or follow the system.") {
+                    Picker("", selection: $colorSchemeRaw) {
+                        Text("System").tag("system")
+                        Text("Light").tag("light")
+                        Text("Dark").tag("dark")
+                    }
+                    .labelsHidden().pickerStyle(.segmented).frame(width: 190)
                 }
                 RowDivider()
                 SettingRow("Accent color", description: "Used across the app.") {
@@ -434,13 +444,13 @@ struct SettingsView: View {
 
 // MARK: - Wispr-style settings components
 
-/// A light grey rounded group that holds setting rows (separated by `RowDivider`).
+/// A rounded group that holds setting rows — adapts fill to light/dark mode.
 private struct SettingsGroup<Content: View>: View {
     @ViewBuilder var content: Content
     var body: some View {
         VStack(spacing: 0) { content }
             .padding(.horizontal, 20)
-            .background(Color(white: 0.965), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .background(Theme.groupBG, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 }
 
@@ -477,14 +487,14 @@ private struct RowDivider: View {
     var body: some View { Divider().overlay(Theme.hairline) }
 }
 
-/// Wispr's wide pill toggle: dark when on, light grey when off, white knob.
+/// Wide pill toggle — adapts to light/dark: primaryText fill when on (dark in light, light in dark).
 private struct WisprToggleStyle: ToggleStyle {
     func makeBody(configuration: Configuration) -> some View {
         Button { configuration.isOn.toggle() } label: {
             ZStack(alignment: configuration.isOn ? .trailing : .leading) {
-                Capsule().fill(configuration.isOn ? Theme.primaryText : Color(white: 0.78))
+                Capsule().fill(configuration.isOn ? Theme.primaryText : Theme.groupBG)
                     .frame(width: 46, height: 28)
-                Circle().fill(.white).frame(width: 23, height: 23)
+                Circle().fill(Theme.cardBG).frame(width: 23, height: 23)
                     .shadow(color: .black.opacity(0.18), radius: 1, y: 1)
                     .padding(2.5)
             }
@@ -494,14 +504,14 @@ private struct WisprToggleStyle: ToggleStyle {
     }
 }
 
-/// A light grey rounded button (Wispr's "Change" / "Export…" buttons).
+/// Rounded grey button — background adapts to light/dark.
 private struct WisprButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: 14, weight: .medium))
             .foregroundStyle(Theme.primaryText)
             .padding(.horizontal, 16).padding(.vertical, 8)
-            .background(Color(white: 0.90), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .background(Theme.groupBG, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
             .opacity(configuration.isPressed ? 0.65 : 1)
     }
 }

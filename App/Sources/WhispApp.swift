@@ -26,6 +26,10 @@ struct WhispApp: App {
     @AppStorage("appLanguage") private var appLanguage = "system"
     @AppStorage("accentColor") private var accentColor = "violet"
     @AppStorage("fontStyle") private var fontStyle = "system"
+    @AppStorage("colorScheme") private var colorSchemeRaw = "system"
+    private var preferredScheme: ColorScheme? {
+        switch colorSchemeRaw { case "light": .light; case "dark": .dark; default: nil }
+    }
     private let container: ModelContainer
     private let hotkeys = CarbonHotkeyMonitor()
     private let modifierMonitor = ModifierTapMonitor()
@@ -200,7 +204,7 @@ struct WhispApp: App {
                 .environment(\.locale, appLocale)
                 .tint(appAccent)
                 .fontDesign(appFontDesign)
-                .preferredColorScheme(.light)
+                .preferredColorScheme(preferredScheme)
                 .frame(minWidth: 860, minHeight: 560)
         }
         .windowResizability(.contentSize)
