@@ -327,7 +327,7 @@ struct DashboardView: View {
                         }
                     } label: {
                         HStack(spacing: 3) {
-                            Text(DictationLanguage.summary(dictationLanguages))
+                            Text(DictationLanguage.compactSummary(dictationLanguages))
                                 .font(.system(size: 12, weight: .medium))
                                 .foregroundStyle(Theme.primaryText)
                             Image(systemName: "chevron.up.chevron.down")

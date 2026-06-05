@@ -34,4 +34,11 @@ struct DictationLanguage: Identifiable, Hashable {
         let names = selectedIDs(raw).compactMap { id in all.first { $0.id == id }?.name }
         return names.isEmpty ? "Auto-detect" : names.joined(separator: ", ")
     }
+
+    /// First language name only; if more are selected appends " +" (e.g. "English (US) +").
+    static func compactSummary(_ raw: String) -> String {
+        let names = selectedIDs(raw).compactMap { id in all.first { $0.id == id }?.name }
+        guard let first = names.first else { return "Auto" }
+        return names.count > 1 ? "\(first) +" : first
+    }
 }
