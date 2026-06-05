@@ -34,22 +34,25 @@ struct DashboardView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 22) {
+            VStack(alignment: .leading, spacing: 14) {
                 greeting
                 if !axTrusted { accessibilityBanner }
-                HStack(alignment: .top, spacing: 20) {
+                HStack(alignment: .top, spacing: 16) {
                     recordCard
-                    statsCard
+                    VStack(spacing: 12) {
+                        statsCard
+                        AIModelCard()
+                            .animation(.spring(response: 0.3, dampingFraction: 0.8),
+                                       value: (store.activeModel?.id ?? "") + downloadKey)
+                    }
+                    .frame(width: 234)
                 }
-                AIModelCard()
-                    .animation(.spring(response: 0.3, dampingFraction: 0.8),
-                               value: (store.activeModel?.id ?? "") + downloadKey)
                 if !controller.liveText.isEmpty { liveText }
                 recentSection
                 filesSection
             }
-            .padding(28)
-            .frame(maxWidth: 920, alignment: .leading)
+            .padding(20)
+            .frame(maxWidth: 900, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .scrollContentBackground(.hidden)
