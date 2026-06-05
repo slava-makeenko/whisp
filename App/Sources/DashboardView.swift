@@ -43,7 +43,6 @@ struct DashboardView: View {
                 filesSection
             }
             .padding(20)
-            .frame(maxWidth: 860, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .scrollContentBackground(.hidden)
