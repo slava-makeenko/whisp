@@ -54,6 +54,9 @@ struct RootView: View {
         .onReceive(NotificationCenter.default.publisher(for: .whispOpenSettings)) { _ in
             selection = .settings
         }
+        .onReceive(NotificationCenter.default.publisher(for: .whispOpenHistory)) { _ in
+            selection = .history
+        }
         .overlay(alignment: .bottomTrailing) {
             Text(appVersion)
                 .font(.system(size: 11))

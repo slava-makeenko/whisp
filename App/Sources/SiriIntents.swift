@@ -4,6 +4,7 @@ import Foundation
 extension Notification.Name {
     static let whispToggleDictation = Notification.Name("com.example.whisp.toggleDictation")
     static let whispOpenSettings    = Notification.Name("com.example.whisp.openSettings")
+    static let whispOpenHistory     = Notification.Name("com.example.whisp.openHistory")
 }
 
 /// Siri / Shortcuts action that toggles dictation in the running app via a notification.
