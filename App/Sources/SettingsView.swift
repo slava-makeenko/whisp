@@ -12,6 +12,7 @@ import WhispASR
 /// right. Each row is "title + description … control". Adapted to whisp's own features.
 struct SettingsView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(LocalModelStore.self) private var modelStore
     @Query(sort: \DictionaryEntry.term) private var entries: [DictionaryEntry]
     @State private var newTerm = ""
     @State private var newReplacement = ""
@@ -108,6 +109,83 @@ struct SettingsView: View {
         .padding(.horizontal, 8)
         .frame(height: 46)
         .background(Theme.windowBG)
+    }
+
+    // MARK: - On-device model section
+
+    private var onDeviceModelSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("ON-DEVICE MODEL")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Theme.secondaryText)
+            SettingsGroup {
+                ForEach(OnDeviceModel.catalog) { model in
+                    let state = modelStore.states[model.id] ?? .notDownloaded
+                    let isActive = modelStore.activeModel?.id == model.id
+                    SettingRow(LocalizedStringKey(model.displayName),
+                               description: LocalizedStringKey(model.description)) {
+                        settingsModelControl(model: model, state: state, isActive: isActive)
+                    }
+                    if model.id != OnDeviceModel.catalog.last?.id { RowDivider() }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func settingsModelControl(model: OnDeviceModel,
+                                      state: ModelDownloadState,
+                                      isActive: Bool) -> some View {
+        switch state {
+        case .notDownloaded:
+            Button {
+                modelStore.startDownload(model)
+            } label: {
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text("Download")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 10).padding(.vertical, 5)
+                        .background(Theme.accent, in: Capsule())
+                    Text(model.sizeFormatted).font(.system(size: 10)).foregroundStyle(Theme.secondaryText)
+                }
+            }
+            .buttonStyle(.plain).pointingCursor()
+
+        case .downloading(let progress):
+            VStack(alignment: .trailing, spacing: 4) {
+                ProgressView(value: progress).progressViewStyle(.linear)
+                    .frame(width: 100).tint(Theme.accent)
+                HStack(spacing: 8) {
+                    Text("\(Int(progress * 100))%").font(.system(size: 10)).foregroundStyle(Theme.secondaryText)
+                    Button("Cancel") { modelStore.cancelDownload(model) }
+                        .font(.system(size: 10)).foregroundStyle(.red).buttonStyle(.plain).pointingCursor()
+                }
+            }
+
+        case .downloaded:
+            if isActive {
+                Label("Active", systemImage: "checkmark.circle.fill")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.green)
+            } else {
+                HStack(spacing: 8) {
+                    Button("Use") { modelStore.select(model) }
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(Theme.accent)
+                        .buttonStyle(.plain).pointingCursor()
+                    Button { modelStore.delete(model) } label: {
+                        Image(systemName: "trash").font(.system(size: 12))
+                    }
+                    .buttonStyle(.plain).foregroundStyle(Theme.secondaryText).pointingCursor()
+                }
+            }
+
+        case .failed:
+            Button("Retry") { modelStore.startDownload(model) }
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.red).buttonStyle(.plain).pointingCursor()
+        }
     }
 
     private var versionString: String {
@@ -222,6 +300,7 @@ struct SettingsView: View {
 
     private var aiContent: some View {
         VStack(alignment: .leading, spacing: 22) {
+            onDeviceModelSection
             SettingsGroup {
                 SettingRow("Formatting", description: "Auto adapts to the focused app. Clean-up works on-device; the rest use the LLM below.") {
                     WispValueMenu(selection: $enhancementStyle, options: EnhancementStyle.allCases.map { ($0.rawValue, $0.name) })

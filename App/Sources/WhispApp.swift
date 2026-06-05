@@ -7,12 +7,14 @@ import WhispASR
 import WhispInput
 import WhispPlatform
 import WhispLLM
+import UniformTypeIdentifiers
 
 @main
 struct WhispApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var controller: DictationController
     @State private var fileQueueModel: FileQueueModel
+    @State private var modelStore = LocalModelStore()
     @State private var onboarding = OnboardingModel(permissions: SystemPermissions())
     @StateObject private var updaterController = UpdaterController()
     @AppStorage("didOnboard") private var didOnboard = false
@@ -98,11 +100,15 @@ struct WhispApp: App {
                 let prompt = style == .custom ? (defaults.string(forKey: "enhancementPrompt") ?? "") : (style.prompt ?? "")
 
                 if let key, !key.isEmpty, !prompt.isEmpty {
+                    // Cloud LLM (API key configured)
                     let model = defaults.string(forKey: "enhancementModel") ?? ""
                     result = (try? await URLSessionLLMEnhancer(apiKey: key)
                         .enhance(result, prompt: prompt, provider: provider.llmProvider(model: model))) ?? result
+                } else if UserDefaults.standard.string(forKey: "localModelID") != nil {
+                    // On-device model downloaded — LocalTextCleaner now; MLX inference plugged in here
+                    result = LocalTextCleaner.clean(result)
                 } else if style == .cleanUp {
-                    result = LocalTextCleaner.clean(result)   // no LLM → light on-device cleanup
+                    result = LocalTextCleaner.clean(result)
                 }
                 return result
             },
@@ -163,6 +169,7 @@ struct WhispApp: App {
             RootView()
                 .environment(controller)
                 .environment(fileQueueModel)
+                .environment(modelStore)
                 .environment(\.locale, appLocale)
                 .modelContainer(container)
                 .task { await startHotkeys() }

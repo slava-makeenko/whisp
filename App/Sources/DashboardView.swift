@@ -28,7 +28,11 @@ struct DashboardView: View {
                 if !axTrusted { accessibilityBanner }
                 HStack(alignment: .top, spacing: 20) {
                     recordCard
-                    statsCard
+                    VStack(spacing: 16) {
+                        statsCard
+                        AIModelCard()
+                    }
+                    .frame(width: 240)
                 }
                 if !controller.liveText.isEmpty { liveText }
                 recentSection
