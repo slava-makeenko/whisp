@@ -40,11 +40,9 @@ struct RootView: View {
     var body: some View {
         NavigationSplitView {
             sidebar
-                .padding(.top, 28)
                 .navigationSplitViewColumnWidth(min: 210, ideal: 224, max: 280)
         } detail: {
             detail
-                .padding(.top, 8)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Theme.windowBG)
         }
