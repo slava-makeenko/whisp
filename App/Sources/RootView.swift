@@ -47,7 +47,7 @@ struct RootView: View {
                 .background(Theme.windowBG)
         }
         .navigationSplitViewStyle(.balanced)
-        .toolbar(.hidden, for: .windowToolbar)
+        .ignoresSafeArea(.all, edges: .top)
         .tint((AccentPalette(rawValue: accentColor) ?? .violet).color)
         .fontDesign((AppFontStyle(rawValue: fontStyle) ?? .system).design)
         .preferredColorScheme(preferredScheme)
@@ -79,7 +79,7 @@ struct RootView: View {
                     .font(.system(size: 19, weight: .bold))
                     .foregroundStyle(Theme.primaryText)
             }
-            .padding(.horizontal, 10).padding(.top, 4).padding(.bottom, 16)
+            .padding(.horizontal, 10).padding(.top, 32).padding(.bottom, 16)
 
             ForEach([Section.dashboard, .history, .powerMode]) { section in
                 SidebarRow(title: section.rawValue, symbol: section.symbol,

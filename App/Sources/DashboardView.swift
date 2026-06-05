@@ -44,7 +44,7 @@ struct DashboardView: View {
             }
             .padding(.horizontal, 20)
             .padding(.bottom, 20)
-            .padding(.top, 8)
+            .padding(.top, 32)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .scrollContentBackground(.hidden)
