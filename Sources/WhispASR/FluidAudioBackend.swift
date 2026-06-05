@@ -1,6 +1,6 @@
 import Foundation
 import WhispAudio
-import FluidAudio
+@preconcurrency import FluidAudio
 
 /// Parakeet (TDT v3 multilingual / v2 English) via FluidAudio CoreML on the ANE.
 /// `stream` buffers to a final result; true low-latency streaming would use FluidAudio's

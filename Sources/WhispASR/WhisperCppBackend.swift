@@ -1,7 +1,7 @@
 import Foundation
 @preconcurrency import AVFoundation
 import WhispAudio
-import SwiftWhisper
+@preconcurrency import SwiftWhisper
 
 /// Whisper via whisper.cpp (ggml / Metal) — the same engine family VoiceInk uses, offered as a
 /// user-selectable backend. The ggml model downloads on first `prepare()`.

@@ -1,6 +1,6 @@
 import Foundation
 import WhispAudio
-import WhisperKit
+@preconcurrency import WhisperKit
 
 /// Whisper via WhisperKit (Swift-native CoreML on the ANE). Default fallback / override
 /// backend. `stream` buffers to a final result; WhisperKit's `AudioStreamTranscriber`
