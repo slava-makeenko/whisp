@@ -15,11 +15,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Select latest Xcode
-        run: |
-          XCODE=$(ls /Applications | grep 'Xcode_' | sort -V | tail -1)
-          sudo xcode-select -s "/Applications/$XCODE/Contents/Developer"
-          xcodebuild -version
+      - name: Xcode version
+        run: xcodebuild -version
 
       - name: Install XcodeGen
         run: brew install xcodegen
@@ -53,12 +50,11 @@ jobs:
           hdiutil create \
             -volname "whisp" \
             -srcfolder "$STAGE" \
-            -ov \
-            -format UDZO \
+            -ov -format UDZO \
             -o "$DMG"
 
           hdiutil verify "$DMG"
-          echo "DMG_PATH=$DMG"   >> "$GITHUB_ENV"
+          echo "DMG_PATH=$DMG"    >> "$GITHUB_ENV"
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
 
       - name: Create GitHub Release
@@ -75,7 +71,7 @@ jobs:
 
             1. Download `whisp-${{ env.VERSION }}.dmg` below.
             2. Open the DMG and drag **whisp** to **Applications**.
-            3. On first launch, right-click → **Open** to bypass Gatekeeper
-               (the app is unsigned — a Developer ID certificate is needed for
-               automatic trust; notarization is planned for a future release).
+            3. On first launch right-click → **Open** to bypass Gatekeeper
+               (the build is unsigned; a Developer ID certificate is needed for
+               automatic trust — planned for a future release).
             4. Grant **Microphone** and **Accessibility** when prompted.
