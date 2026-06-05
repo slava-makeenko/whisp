@@ -29,12 +29,18 @@ public actor TranscriptionQueue {
     private var jobs: [TranscriptionJob] = []
     private var processing = false
 
+    /// Optional post-processing applied to each file's transcript (same pipeline as dictation).
+    public var textPostProcessor: (@Sendable (String) async -> String)?
+
     public nonisolated let updates: AsyncStream<[TranscriptionJob]>
     private let continuation: AsyncStream<[TranscriptionJob]>.Continuation
 
-    public init(router: TranscriptionRouter, options: TranscriptionOptions = .init()) {
+    public init(router: TranscriptionRouter,
+                options: TranscriptionOptions = .init(),
+                textPostProcessor: (@Sendable (String) async -> String)? = nil) {
         self.router = router
         self.options = options
+        self.textPostProcessor = textPostProcessor
         (updates, continuation) = AsyncStream.makeStream(of: [TranscriptionJob].self)
     }
 
@@ -67,7 +73,8 @@ public actor TranscriptionQueue {
             emit()
             do {
                 let result = try await service.transcribeFile(url, options: options)
-                update(id, .done(result.text))
+                let text = await textPostProcessor?(result.text) ?? result.text
+                update(id, .done(text))
             } catch {
                 update(id, .failed(String(describing: error)))
             }

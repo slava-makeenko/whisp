@@ -135,7 +135,33 @@ struct WhispApp: App {
             })
         _controller = State(initialValue: controller)
         _fileQueueModel = State(initialValue: FileQueueModel(
-            queue: TranscriptionQueue(router: TranscriptionBackends.makeRouter())))
+            queue: TranscriptionQueue(
+                router: TranscriptionBackends.makeRouter(),
+                textPostProcessor: { text in
+                    // Apply the same formatting pipeline as live dictation.
+                    let replacements = (try? await dictionaryStore.enabledReplacements()) ?? []
+                    var result = DictionaryProcessor.apply(replacements, to: text)
+                    let defaults = UserDefaults.standard
+                    let styleRaw = defaults.string(forKey: "enhancementStyle") ?? "auto"
+                    var style = EnhancementStyle(rawValue: styleRaw) ?? .auto
+                    if style == .auto {
+                        let rules = AppEnhancementRule.decode(defaults.string(forKey: "enhancementAppRules") ?? "[]")
+                        style = rules.first.flatMap { EnhancementStyle(rawValue: $0.style) } ?? .cleanUp
+                    }
+                    guard style != .raw else { return result }
+                    let provider = EnhancementProvider(rawValue: defaults.string(forKey: "enhancementProvider") ?? "openai") ?? .openAI
+                    let key = (try? KeychainSecretStore().get(provider.secretKey)) ?? nil
+                    let prompt = style == .custom ? (defaults.string(forKey: "enhancementPrompt") ?? "") : (style.prompt ?? "")
+                    if let key, !key.isEmpty, !prompt.isEmpty {
+                        let model = defaults.string(forKey: "enhancementModel") ?? ""
+                        result = (try? await URLSessionLLMEnhancer(apiKey: key)
+                            .enhance(result, prompt: prompt, provider: provider.llmProvider(model: model))) ?? result
+                    } else if style == .cleanUp || defaults.string(forKey: "localModelID") != nil {
+                        result = LocalTextCleaner.clean(result)
+                    }
+                    return result
+                }
+            )))
 
         // Power Mode applies the active profile's locale to the next dictation session.
         // Profiles start empty; the management UI is a later refinement.
