@@ -81,14 +81,48 @@ enum EnhancementStyle: String, CaseIterable, Identifiable {
     var prompt: String? {
         switch self {
         case .raw, .auto, .custom: nil
+
         case .cleanUp:
-            "You clean up dictated text. Remove hesitation/filler words (um, uh, like, you know, эм, ну, как бы), fix punctuation and capitalization, and break it into sentences. Keep the original meaning, wording and language. Output ONLY the cleaned text."
+            """
+            You are a precise speech-to-text editor. Clean up the following dictated text by:
+            1. Removing filler/hesitation words (um, uh, er, hmm, эм, ну вот, короче, типа, как бы, вот, значит — only when they are clearly fillers, not when they carry meaning).
+            2. Removing consecutive duplicate words ("the the" → "the", "и и" → "и").
+            3. Adding missing punctuation: periods at sentence ends, commas before conjunctions, question marks for questions.
+            4. Capitalizing the start of every sentence and proper nouns.
+            5. Removing dangling conjunctions at the very end (e.g. text cut off mid-phrase).
+            Rules: NEVER rephrase, paraphrase, or add content. NEVER translate. Preserve the exact wording, all languages, and all code/technical terms verbatim. Output ONLY the cleaned text.
+            """
+
         case .email:
-            "Rewrite this dictated text as a clear, professional email body: fix grammar, remove filler words, structure into paragraphs. Keep the original meaning and language. Output ONLY the email text (no subject/greeting unless dictated)."
+            """
+            Rewrite the following dictated text as a polished email body:
+            - Fix grammar, punctuation, and remove filler words.
+            - Structure into clear paragraphs with logical flow.
+            - Use a professional yet natural tone.
+            - Do NOT translate — preserve every language used by the speaker.
+            - Do NOT add a subject line, greeting, or sign-off unless explicitly dictated.
+            Output ONLY the email body text, nothing else.
+            """
+
         case .chat:
-            "Rewrite this dictated text as a casual, concise chat message: remove filler words, fix punctuation, keep it natural and brief. Keep the original meaning and language. Output ONLY the message."
+            """
+            Rewrite the following dictated text as a natural, concise chat message:
+            - Remove filler words and false starts.
+            - Fix punctuation and capitalization.
+            - Keep it brief and conversational — do not expand or formalize.
+            - Do NOT translate — preserve every language used.
+            Output ONLY the message text, nothing else.
+            """
+
         case .code:
-            "Format this dictated text as a precise technical note or code comment: fix terminology and punctuation, remove filler words. Keep the original meaning and language. Output ONLY the formatted text."
+            """
+            You are a developer's dictation assistant. Process the following dictated text:
+            - If it describes code: convert spoken syntax to correct code (e.g. "open paren" → "(", "dot" → ".", "equals equals" → "==", "new line" → actual newline).
+            - If it is a comment or technical note: fix grammar, remove fillers, use precise technical terminology.
+            - Remove duplicate words and hesitations.
+            - Do NOT translate. Do NOT add explanations.
+            Output ONLY the processed text or code, nothing else.
+            """
         }
     }
 
