@@ -114,13 +114,6 @@ struct DashboardView: View {
 
     private var recordCard: some View {
         VStack(spacing: 0) {
-            HStack {
-                statusBadge
-                Spacer()
-                modePill
-            }
-            .padding(.bottom, 12)
-
             if let start = controller.recordingStartedAt {
                 TimelineView(.periodic(from: start, by: 1)) { ctx in
                     Text(Self.elapsed(from: start, to: ctx.date))
