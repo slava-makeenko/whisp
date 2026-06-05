@@ -101,7 +101,7 @@ struct DashboardView: View {
     // MARK: - Record card
 
     private var recordCard: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: 10) {
             HStack {
                 statusBadge
                 Spacer()
@@ -111,7 +111,7 @@ struct DashboardView: View {
             if let start = controller.recordingStartedAt {
                 TimelineView(.periodic(from: start, by: 1)) { context in
                     Text(Self.elapsed(from: start, to: context.date))
-                        .font(.system(size: 34, weight: .bold, design: .rounded))
+                        .font(.system(size: 28, weight: .bold, design: .rounded))
                         .monospacedDigit()
                         .foregroundStyle(.red)
                 }
@@ -119,10 +119,10 @@ struct DashboardView: View {
 
             Button(action: controller.toggle) {
                 Label(LocalizedStringKey(recordLabel), systemImage: recordIcon)
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 11)
+                    .padding(.vertical, 8)
                     .background(controller.state == .recording ? Color.red : Theme.accent,
                                 in: Capsule())
             }
@@ -138,11 +138,11 @@ struct DashboardView: View {
 
             if controller.state == .recording {
                 WaveformView(level: controller.level, tint: .red, barCount: 9)
-                    .frame(height: 28)
+                    .frame(height: 22)
                     .transition(.scale(scale: 0.6).combined(with: .opacity))
             } else {
                 Text("Or press \(hotkeyBadge) anywhere to dictate.")
-                    .font(.system(size: 13))
+                    .font(.system(size: 12))
                     .foregroundStyle(Theme.secondaryText)
             }
 
@@ -151,7 +151,7 @@ struct DashboardView: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .wispCard()
+        .wispCard(padding: 14)
         .animation(.spring(response: 0.35, dampingFraction: 0.7), value: controller.state)
         .animation(.default, value: controller.lastInjection)
     }
@@ -216,14 +216,13 @@ struct DashboardView: View {
     // MARK: - Stats
 
     private var statsCard: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 10) {
             StatRow(value: totalWords.formatted(), label: "total words")
             StatRow(value: "\(Int(summary.avgWPM))", label: "wpm")
             StatRow(value: "\(streakDays)", label: "day streak")
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .wispCard()
-        .frame(width: 240)
+        .wispCard(padding: 14)
     }
 
     private var totalWords: Int {
@@ -491,7 +490,7 @@ private struct StatRow: View {
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Text(value)
-                .font(.system(size: 32, weight: .light))
+                .font(.system(size: 24, weight: .light))
                 .foregroundStyle(Theme.primaryText)
                 .contentTransition(.numericText())
             Text(LocalizedStringKey(label))
