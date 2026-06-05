@@ -174,7 +174,7 @@ struct DashboardView: View {
             }
         }
         .padding(16)
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.cardBG, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         .shadow(color: Theme.cardShadow, radius: 8, x: 0, y: 3)
         .animation(.spring(response: 0.35, dampingFraction: 0.7), value: controller.state)
