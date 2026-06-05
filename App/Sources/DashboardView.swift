@@ -45,14 +45,14 @@ struct DashboardView: View {
                             .animation(.spring(response: 0.3, dampingFraction: 0.8),
                                        value: (store.activeModel?.id ?? "") + downloadKey)
                     }
-                    .frame(width: 234)
+                    .frame(width: 196)
                 }
                 if !controller.liveText.isEmpty { liveText }
                 recentSection
                 filesSection
             }
             .padding(20)
-            .frame(maxWidth: 900, alignment: .leading)
+            .frame(maxWidth: 760, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .scrollContentBackground(.hidden)
