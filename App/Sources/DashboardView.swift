@@ -4,6 +4,7 @@ import AppKit
 import ApplicationServices
 import WhispCore
 import WhispInput
+import WhispLLM
 
 struct DashboardView: View {
     @Environment(DictationController.self) private var controller
@@ -14,6 +15,16 @@ struct DashboardView: View {
     @AppStorage("hotkeyKeyCode") private var hotkeyKeyCode = 49
     @AppStorage("hotkeyModifiers") private var hotkeyModifiers = HotkeyModifiers.option.rawValue
     @AppStorage("enhancementStyle") private var enhancementStyle = "auto"
+    @Environment(LocalModelStore.self) private var store
+
+    private var downloadKey: String {
+        OnDeviceModel.catalog.compactMap { m -> String? in
+            if case .downloading(let p) = store.states[m.id] ?? .notDownloaded {
+                return "\(m.id)\(Int(p*100))"
+            }
+            return nil
+        }.joined()
+    }
 
     @State private var dropTargeted = false
     @State private var recordHovering = false
@@ -28,12 +39,11 @@ struct DashboardView: View {
                 if !axTrusted { accessibilityBanner }
                 HStack(alignment: .top, spacing: 20) {
                     recordCard
-                    VStack(spacing: 16) {
-                        statsCard
-                        AIModelCard()
-                    }
-                    .frame(width: 240)
+                    statsCard
                 }
+                AIModelCard()
+                    .animation(.spring(response: 0.3, dampingFraction: 0.8),
+                               value: (store.activeModel?.id ?? "") + downloadKey)
                 if !controller.liveText.isEmpty { liveText }
                 recentSection
                 filesSection
