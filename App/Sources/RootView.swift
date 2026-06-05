@@ -47,6 +47,7 @@ struct RootView: View {
                 .background(Theme.windowBG)
         }
         .navigationSplitViewStyle(.balanced)
+        .toolbar(.hidden, for: .windowToolbar)
         .tint((AccentPalette(rawValue: accentColor) ?? .violet).color)
         .fontDesign((AppFontStyle(rawValue: fontStyle) ?? .system).design)
         .preferredColorScheme(preferredScheme)
