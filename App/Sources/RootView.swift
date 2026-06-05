@@ -32,6 +32,11 @@ struct RootView: View {
         }
     }
 
+    private var appVersion: String {
+        let v = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
+        return "whisp \(v)"
+    }
+
     var body: some View {
         NavigationSplitView {
             sidebar
@@ -48,6 +53,13 @@ struct RootView: View {
         .wispWindowChrome()
         .onReceive(NotificationCenter.default.publisher(for: .whispOpenSettings)) { _ in
             selection = .settings
+        }
+        .overlay(alignment: .bottomTrailing) {
+            Text(appVersion)
+                .font(.system(size: 11))
+                .foregroundStyle(Theme.secondaryText.opacity(0.6))
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
         }
     }
 

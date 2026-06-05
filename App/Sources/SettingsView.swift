@@ -104,10 +104,6 @@ struct SettingsView: View {
                 }
             }
             Spacer()
-            Text(versionString)
-                .font(.system(size: 11))
-                .foregroundStyle(Theme.secondaryText)
-                .padding(.trailing, 20)
         }
         .padding(.horizontal, 8)
         .frame(height: 46)
