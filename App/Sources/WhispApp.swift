@@ -197,18 +197,6 @@ struct WhispApp: App {
             MenuBarContent().environment(controller).environment(\.locale, appLocale)
         }
         .menuBarExtraStyle(.menu)
-
-        Window("Settings", id: "settings") {
-            SettingsView()
-                .modelContainer(container)
-                .environment(\.locale, appLocale)
-                .tint(appAccent)
-                .fontDesign(appFontDesign)
-                .preferredColorScheme(preferredScheme)
-                .frame(minWidth: 860, minHeight: 560)
-        }
-        .windowResizability(.contentSize)
-        .defaultSize(width: 940, height: 640)
     }
 
     /// ⌥Space toggles dictation. Requires Accessibility permission (requested in onboarding, Phase 10);
@@ -251,12 +239,15 @@ struct WhispApp: App {
     }
 }
 
-/// The app-menu "Settings…" item (⌘,) — opens the dedicated Settings window.
+/// The app-menu "Settings…" item (⌘,) — brings the main window forward.
 private struct OpenSettingsButton: View {
-    @Environment(\.openWindow) private var openWindow
     var body: some View {
-        Button("Settings…") { openWindow(id: "settings") }
-            .keyboardShortcut(",", modifiers: .command)
+        Button("Settings…") {
+            NSApp.activate(ignoringOtherApps: true)
+            NSApp.windows.first { $0.identifier?.rawValue == "main" }?.makeKeyAndOrderFront(nil)
+            NotificationCenter.default.post(name: .whispOpenSettings, object: nil)
+        }
+        .keyboardShortcut(",", modifiers: .command)
     }
 }
 
