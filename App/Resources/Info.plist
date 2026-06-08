@@ -29,11 +29,11 @@
     <string>whisp detects the active browser tab to switch Power Mode profiles.</string>
     <key>NSHumanReadableCopyright</key>
     <string>© 2026</string>
-    <!-- Sparkle updater — P4: real appcast URL + base64 EdDSA public key -->
+    <!-- Sparkle updater. Release builds substitute these from Xcode settings/GitHub secrets. -->
     <key>SUFeedURL</key>
-    <string>https://example.com/whisp/appcast.xml</string>
+    <string>$(SPARKLE_FEED_URL)</string>
     <key>SUPublicEDKey</key>
-    <string></string>
+    <string>$(SPARKLE_PUBLIC_ED_KEY)</string>
     <key>SUEnableAutomaticChecks</key>
     <true/>
 </dict>

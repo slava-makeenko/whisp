@@ -3,17 +3,48 @@ name: Release
 on:
   push:
     tags: ['v*.*.*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to build, e.g. v0.1.1-private. Defaults to current ref name.'
+        required: false
+        type: string
 
 permissions:
   contents: write
 
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+
 jobs:
   build-dmg:
-    name: Build & Publish DMG
+    name: Build unsigned DMG + Sparkle appcast
     runs-on: macos-15
+
+    env:
+      SPARKLE_VERSION: 2.9.2
+      SPARKLE_FEED_URL: https://github.com/slava-makeenko/whisp/releases/latest/download/appcast.xml
+      SPARKLE_PUBLIC_ED_KEY: ${{ secrets.SPARKLE_PUBLIC_ED_KEY }}
+      SPARKLE_PRIVATE_ED_KEY: ${{ secrets.SPARKLE_PRIVATE_ED_KEY }}
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Validate Sparkle secrets
+        run: |
+          test -n "$SPARKLE_PUBLIC_ED_KEY" || { echo "Missing SPARKLE_PUBLIC_ED_KEY secret"; exit 1; }
+          test -n "$SPARKLE_PRIVATE_ED_KEY" || { echo "Missing SPARKLE_PRIVATE_ED_KEY secret"; exit 1; }
+
+      - name: Resolve release version
+        run: |
+          TAG="${{ inputs.tag || github.ref_name }}"
+          VERSION="${TAG#v}"
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "DMG_NAME=whisp-${VERSION}.dmg" >> "$GITHUB_ENV"
 
       - name: Xcode version
         run: xcodebuild -version
@@ -21,50 +52,74 @@ jobs:
       - name: Install XcodeGen
         run: brew install xcodegen
 
+      - name: Download Sparkle tools
+        run: |
+          curl -L -o Sparkle.tar.xz \
+            "https://github.com/sparkle-project/Sparkle/releases/download/${SPARKLE_VERSION}/Sparkle-${SPARKLE_VERSION}.tar.xz"
+          tar -xf Sparkle.tar.xz
+          test -x bin/generate_appcast
+
       - name: Generate Xcode project
         run: xcodegen generate
 
-      - name: Build Release
+      - name: Build Release with Sparkle enabled
         run: |
           xcodebuild -project whisp.xcodeproj \
             -scheme whisp \
             -configuration Release \
             -destination 'platform=macOS' \
             CODE_SIGNING_ALLOWED=NO \
-            SWIFT_ACTIVE_COMPILATION_CONDITIONS="LOCAL_BUILD" \
+            MARKETING_VERSION="$VERSION" \
+            SPARKLE_FEED_URL="$SPARKLE_FEED_URL" \
+            SPARKLE_PUBLIC_ED_KEY="$SPARKLE_PUBLIC_ED_KEY" \
             build
 
       - name: Package DMG
         run: |
           APP=$(find ~/Library/Developer/Xcode/DerivedData -name whisp.app \
             -path '*/Build/Products/Release/*' | grep -v Index.noindex | head -1)
+          test -n "$APP" || { echo "whisp.app not found"; exit 1; }
           echo "Packaging: $APP"
 
           STAGE=$(mktemp -d)
           cp -R "$APP" "$STAGE/whisp.app"
           ln -s /Applications "$STAGE/Applications"
 
-          VERSION="${GITHUB_REF_NAME#v}"
-          DMG="whisp-${VERSION}.dmg"
-
           hdiutil create \
             -volname "whisp" \
             -srcfolder "$STAGE" \
             -ov -format UDZO \
-            -o "$DMG"
+            -o "$DMG_NAME"
 
-          hdiutil verify "$DMG"
-          echo "DMG_PATH=$DMG"    >> "$GITHUB_ENV"
-          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          hdiutil verify "$DMG_NAME"
+          echo "DMG_PATH=$DMG_NAME" >> "$GITHUB_ENV"
+
+      - name: Generate Sparkle appcast
+        run: |
+          ARCHIVE_DIR=$(mktemp -d)
+          cp "$DMG_PATH" "$ARCHIVE_DIR/$DMG_NAME"
+          KEY_FILE=$(mktemp)
+          printf '%s' "$SPARKLE_PRIVATE_ED_KEY" > "$KEY_FILE"
+          ./bin/generate_appcast \
+            --ed-key-file "$KEY_FILE" \
+            --download-url-prefix "https://github.com/slava-makeenko/whisp/releases/download/$TAG" \
+            "$ARCHIVE_DIR"
+          cp "$ARCHIVE_DIR/appcast.xml" ./appcast.xml
+          test -s appcast.xml
+          grep -q 'sparkle:edSignature' appcast.xml
+          echo "APPCAST_PATH=appcast.xml" >> "$GITHUB_ENV"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           name: whisp ${{ env.VERSION }}
-          tag_name: ${{ github.ref_name }}
-          files: ${{ env.DMG_PATH }}
+          tag_name: ${{ env.TAG }}
+          files: |
+            ${{ env.DMG_PATH }}
+            ${{ env.APPCAST_PATH }}
           draft: false
-          prerelease: ${{ contains(github.ref_name, 'beta') || contains(github.ref_name, 'alpha') }}
+          prerelease: false
+          make_latest: true
           generate_release_notes: true
           body: |
             ## Installation
@@ -72,6 +127,14 @@ jobs:
             1. Download `whisp-${{ env.VERSION }}.dmg` below.
             2. Open the DMG and drag **whisp** to **Applications**.
             3. On first launch right-click → **Open** to bypass Gatekeeper
-               (the build is unsigned; a Developer ID certificate is needed for
-               automatic trust — planned for a future release).
+               (this build is unsigned and not notarized).
             4. Grant **Microphone** and **Accessibility** when prompted.
+
+            ## Updates
+
+            Sparkle is enabled in this build. The app checks:
+
+            `${{ env.SPARKLE_FEED_URL }}`
+
+            The appcast and DMG are EdDSA-signed with Sparkle, but the macOS app
+            itself is intentionally unsigned/not notarized for this private build.
