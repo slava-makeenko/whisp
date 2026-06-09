@@ -13,6 +13,7 @@ import WhispASR
 struct SettingsView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(LocalModelStore.self) private var modelStore
+    @EnvironmentObject private var updater: UpdaterController
     @Query(sort: \DictionaryEntry.term) private var entries: [DictionaryEntry]
     @State private var newTerm = ""
     @State private var newReplacement = ""
@@ -237,6 +238,33 @@ struct SettingsView: View {
                 RowDivider()
                 SettingRow("Sound on start / stop", description: "Plays a short cue when recording begins and ends.") {
                     Toggle("", isOn: $playSoundCues).labelsHidden().toggleStyle(WisprToggleStyle())
+                }
+            }
+            SettingsGroup {
+                SettingRow("Updates", description: "Check for a new whisp release and follow Sparkle's install prompt.") {
+                    VStack(alignment: .trailing, spacing: 6) {
+                        Button {
+                            updater.checkForUpdates()
+                        } label: {
+                            Text("Check for Updates…")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 10).padding(.vertical, 6)
+                                .background(Theme.accent, in: Capsule())
+                        }
+                        .buttonStyle(.plain)
+                        .pointingCursor()
+                        .disabled(!updater.canCheckForUpdates)
+                        .opacity(updater.canCheckForUpdates ? 1 : 0.5)
+
+                        if let message = updater.status.settingsMessage {
+                            Text(message)
+                                .font(.system(size: 10))
+                                .foregroundStyle(Theme.secondaryText)
+                                .multilineTextAlignment(.trailing)
+                                .frame(maxWidth: 220, alignment: .trailing)
+                        }
+                    }
                 }
             }
         }

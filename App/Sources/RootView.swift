@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import WhispCore
 
 struct RootView: View {
     enum Section: String, CaseIterable, Identifiable {
@@ -20,6 +21,7 @@ struct RootView: View {
     }
 
     @State private var selection: Section = .dashboard
+    @EnvironmentObject private var updater: UpdaterController
     @AppStorage("accentColor") private var accentColor = "violet"
     @AppStorage("fontStyle") private var fontStyle = "system"
     @AppStorage("colorScheme") private var colorSchemeRaw = "system"
@@ -88,6 +90,11 @@ struct RootView: View {
 
             Spacer()
 
+            UpdateSidebarCard(status: updater.status) {
+                updater.installUpdate()
+            }
+            .padding(.bottom, 8)
+
             SidebarRow(title: "Settings", symbol: "gearshape",
                        selected: selection == .settings) { selection = .settings }
             SidebarRow(title: "Help", symbol: "questionmark.circle", selected: false) {
@@ -109,6 +116,69 @@ struct RootView: View {
         case .history:   HistoryView()
         case .powerMode: PowerModeView()
         case .settings:  SettingsView()
+        }
+    }
+}
+
+// MARK: - Sidebar update status
+
+private struct UpdateSidebarCard: View {
+    let status: UpdateStatus
+    let install: () -> Void
+
+    var body: some View {
+        if status.isSidebarVisible, let message = status.sidebarMessage {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: icon)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Theme.accent)
+                        .frame(width: 18)
+                    Text(message)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(Theme.primaryText)
+                        .lineLimit(2)
+                }
+
+                if case .downloading(let progress) = status {
+                    ProgressView(value: progress)
+                        .progressViewStyle(.linear)
+                        .tint(Theme.accent)
+                } else if case .extracting(let progress) = status {
+                    ProgressView(value: progress)
+                        .progressViewStyle(.linear)
+                        .tint(Theme.accent)
+                } else if case .installing = status {
+                    ProgressView()
+                        .controlSize(.small)
+                        .tint(Theme.accent)
+                }
+
+                if let actionTitle = status.actionTitle {
+                    Button(actionTitle, action: install)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .frame(maxWidth: .infinity)
+                        .background(Theme.accent, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        .buttonStyle(.plain)
+                        .pointingCursor()
+                }
+            }
+            .padding(10)
+            .background(Theme.cardBG, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(Theme.hairline))
+        }
+    }
+
+    private var icon: String {
+        switch status {
+        case .downloading: "arrow.down.circle.fill"
+        case .extracting: "archivebox.fill"
+        case .readyToInstall: "arrow.triangle.2.circlepath.circle.fill"
+        case .installing: "gearshape.2.fill"
+        default: "sparkles"
         }
     }
 }

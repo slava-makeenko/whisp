@@ -193,6 +193,7 @@ struct WhispApp: App {
     var body: some Scene {
         Window("whisp", id: "main") {
             RootView()
+                .environmentObject(updaterController)
                 .environment(controller)
                 .environment(fileQueueModel)
                 .environment(modelStore)
