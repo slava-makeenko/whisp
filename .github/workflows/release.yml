@@ -112,7 +112,7 @@ jobs:
           python3 -c "import base64, os, pathlib, sys; s=pathlib.Path(os.environ['KEY_FILE']).read_text().strip(); raw=base64.b64decode(s, validate=True); print(f'SPARKLE_PRIVATE_ED_KEY looks base64: chars={len(s)}, decoded_bytes={len(raw)}'); sys.exit(0 if len(raw) in (32, 96) else 1)"
           ./bin/generate_appcast \
             --ed-key-file "$KEY_FILE" \
-            --download-url-prefix "https://github.com/slava-makeenko/whisp/releases/download/$TAG" \
+            --download-url-prefix "https://github.com/slava-makeenko/whisp/releases/download/$TAG/" \
             "$ARCHIVE_DIR"
           cp "$ARCHIVE_DIR/appcast.xml" ./appcast.xml
           test -s appcast.xml
