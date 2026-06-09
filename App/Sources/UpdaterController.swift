@@ -72,8 +72,8 @@ private final class TrackingSparkleUserDriver: NSObject, SPUUserDriver {
         super.init()
     }
 
-    func showUpdatePermissionRequest(_ request: SPUUpdatePermissionRequest, reply: @escaping (SUUpdatePermissionResponse) -> Void) {
-        standard.showUpdatePermissionRequest(request, reply: reply)
+    func show(_ request: SPUUpdatePermissionRequest, reply: @escaping (SUUpdatePermissionResponse) -> Void) {
+        standard.show(request, reply: reply)
     }
 
     func showUserInitiatedUpdateCheck(cancellation: @escaping () -> Void) {
@@ -98,12 +98,12 @@ private final class TrackingSparkleUserDriver: NSObject, SPUUserDriver {
         standard.showUpdateReleaseNotes(with: downloadData)
     }
 
-    func showUpdateReleaseNotesFailedToDownload(with error: Error) {
-        standard.showUpdateReleaseNotesFailedToDownload(with: error)
+    func showUpdateReleaseNotesFailedToDownloadWithError(_ error: Error) {
+        standard.showUpdateReleaseNotesFailedToDownloadWithError(error)
     }
 
-    func showUpdateNotFound(with error: Error, acknowledgement: @escaping () -> Void) {
-        standard.showUpdateNotFound(with: error) { [weak self] in
+    func showUpdateNotFoundWithError(_ error: Error, acknowledgement: @escaping () -> Void) {
+        standard.showUpdateNotFound { [weak self] in
             self?.onStatusChange?(.idle)
             acknowledgement()
         }
@@ -146,16 +146,11 @@ private final class TrackingSparkleUserDriver: NSObject, SPUUserDriver {
         standard.showExtractionReceivedProgress(progress)
     }
 
-    func showReadyToInstallAndRelaunch(_ reply: @escaping (SPUUserUpdateChoice) -> Void) {
-        readyReply = reply
-        onStatusChange?(.readyToInstall(version: updateVersion))
-        onReadyToInstall?({ [weak self] in
-            guard let self, let readyReply = self.readyReply else { return }
-            self.readyReply = nil
-            self.onStatusChange?(.installing)
-            readyReply(.install)
-        })
-        standard.showReadyToInstallAndRelaunch { [weak self] choice in
+    func showReady(toInstallAndRelaunch reply: @escaping (SPUUserUpdateChoice) -> Void) {
+        var didReply = false
+        let finish: (SPUUserUpdateChoice) -> Void = { [weak self] choice in
+            guard !didReply else { return }
+            didReply = true
             self?.readyReply = nil
             if choice == .install {
                 self?.onStatusChange?(.installing)
@@ -163,6 +158,21 @@ private final class TrackingSparkleUserDriver: NSObject, SPUUserDriver {
                 self?.onStatusChange?(.idle)
             }
             reply(choice)
+        }
+        readyReply = finish
+        onStatusChange?(.readyToInstall(version: updateVersion))
+        onReadyToInstall?({ [weak self] in
+            guard let self, let readyReply = self.readyReply else { return }
+            readyReply(.install)
+        })
+        standard.showReady(toInstallAndRelaunch: finish)
+    }
+
+    func showUpdateNotFoundWithError(_ error: Error) async {
+        await withCheckedContinuation { continuation in
+            showUpdateNotFoundWithError(error) {
+                continuation.resume()
+            }
         }
     }
 
