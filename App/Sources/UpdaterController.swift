@@ -168,13 +168,6 @@ private final class TrackingSparkleUserDriver: NSObject, SPUUserDriver {
         standard.showReady(toInstallAndRelaunch: finish)
     }
 
-    func showUpdateNotFoundWithError(_ error: Error) async {
-        await withCheckedContinuation { continuation in
-            showUpdateNotFoundWithError(error) {
-                continuation.resume()
-            }
-        }
-    }
 
     func showInstallingUpdate(withApplicationTerminated applicationTerminated: Bool, retryTerminatingApplication: @escaping () -> Void) {
         onStatusChange?(.installing)
