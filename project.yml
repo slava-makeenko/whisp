@@ -2,7 +2,7 @@
 # The shell is intentionally thin — all logic lives in the SPM package (path: ".").
 name: whisp
 options:
-  bundleIdPrefix: com.example          # P5
+  bundleIdPrefix: com.slavamakeenko
   deploymentTarget:
     macOS: "14.4"
   createIntermediateGroups: true
@@ -29,8 +29,10 @@ targets:
       - App/Resources/Localizable.xcstrings
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.example.whisp   # P5
+        PRODUCT_BUNDLE_IDENTIFIER: com.slavamakeenko.whisp
         PRODUCT_NAME: whisp
+        SPARKLE_FEED_URL: https://github.com/slava-makeenko/whisp/releases/latest/download/appcast.xml
+        SPARKLE_PUBLIC_ED_KEY: ""
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         GENERATE_INFOPLIST_FILE: "NO"
         INFOPLIST_FILE: App/Resources/Info.plist

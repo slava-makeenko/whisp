@@ -77,6 +77,8 @@ swift test                 # run the core test suite
 packaging/build-dmg.sh     # → a styled, self-contained ~/Desktop/whisp.dmg
 ```
 
+Private unsigned auto-updates are documented in [`docs/sparkle-updates.md`](docs/sparkle-updates.md).
+
 On first launch whisp asks for **Microphone** (to record) and **Accessibility** (to paste
 text into other apps).
 
