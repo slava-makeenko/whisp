@@ -42,7 +42,7 @@ jobs:
         run: |
           TAG="${{ inputs.tag || github.ref_name }}"
           VERSION="${TAG#v}"
-          BUILD_NUMBER=$(python3 -c 'import os; parts=[int(p) for p in os.environ["VERSION"].split(".")]; print(parts[0]*10000 + parts[1]*100 + parts[2])')
+          BUILD_NUMBER=$(VERSION="$VERSION" python3 -c 'import os; parts=[int(p) for p in os.environ["VERSION"].split(".")]; print(parts[0]*10000 + parts[1]*100 + parts[2])')
           echo "TAG=$TAG" >> "$GITHUB_ENV"
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "BUILD_NUMBER=$BUILD_NUMBER" >> "$GITHUB_ENV"
