@@ -99,7 +99,9 @@ jobs:
           ARCHIVE_DIR=$(mktemp -d)
           cp "$DMG_PATH" "$ARCHIVE_DIR/$DMG_NAME"
           KEY_FILE=$(mktemp)
-          printf '%s' "$SPARKLE_PRIVATE_ED_KEY" > "$KEY_FILE"
+          # GitHub Secrets are easy to paste with a trailing newline/space; Sparkle
+          # expects raw base64 with no surrounding whitespace.
+          printf '%s' "$SPARKLE_PRIVATE_ED_KEY" | tr -d '[:space:]' > "$KEY_FILE"
           ./bin/generate_appcast \
             --ed-key-file "$KEY_FILE" \
             --download-url-prefix "https://github.com/slava-makeenko/whisp/releases/download/$TAG" \
