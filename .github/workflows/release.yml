@@ -102,6 +102,8 @@ jobs:
           # GitHub Secrets are easy to paste with a trailing newline/space; Sparkle
           # expects raw base64 with no surrounding whitespace.
           printf '%s' "$SPARKLE_PRIVATE_ED_KEY" | tr -d '[:space:]' > "$KEY_FILE"
+          export KEY_FILE
+          python3 -c "import base64, os, pathlib, sys; s=pathlib.Path(os.environ['KEY_FILE']).read_text().strip(); raw=base64.b64decode(s, validate=True); print(f'SPARKLE_PRIVATE_ED_KEY looks base64: chars={len(s)}, decoded_bytes={len(raw)}'); sys.exit(0 if len(raw) in (32, 96) else 1)"
           ./bin/generate_appcast \
             --ed-key-file "$KEY_FILE" \
             --download-url-prefix "https://github.com/slava-makeenko/whisp/releases/download/$TAG" \
