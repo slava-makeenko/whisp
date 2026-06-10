@@ -160,6 +160,9 @@ public final class AccessibilityTextInjector: TextInjector {
 
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
+        // Mark the dictated text as transient so clipboard managers (Maccy, Paste, Raycast…)
+        // don't persist it to their history — this is dictation in flight, not a user copy.
+        pasteboard.setData(Data(), forType: .init("org.nspasteboard.TransientType"))
         try postCommandV()
 
         try? await Task.sleep(for: pasteboardRestoreDelay)

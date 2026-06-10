@@ -28,6 +28,16 @@ import SwiftData
         #expect(csv.contains("\"hello world\""))
     }
 
+    @Test func csvExportNeutralizesFormulaInjection() async throws {
+        let store = HistoryStore(modelContainer: try makeContainer())
+        try await store.add(text: "=SUM(A1:A9)", durationMs: 1, backend: "x", appBundleID: nil)
+
+        let csv = try await store.exportCSV()
+        // The formula must be prefixed with a single quote so spreadsheets treat it as text.
+        #expect(csv.contains("\"'=SUM(A1:A9)\""))
+        #expect(!csv.contains("\"=SUM"))
+    }
+
     @Test func historyDelete() async throws {
         let store = HistoryStore(modelContainer: try makeContainer())
         try await store.add(text: "one", durationMs: 1, backend: "x", appBundleID: nil)

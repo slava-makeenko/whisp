@@ -2,9 +2,9 @@ import AppIntents
 import Foundation
 
 extension Notification.Name {
-    static let whispToggleDictation = Notification.Name("com.example.whisp.toggleDictation")
-    static let whispOpenSettings    = Notification.Name("com.example.whisp.openSettings")
-    static let whispOpenHistory     = Notification.Name("com.example.whisp.openHistory")
+    static let whispToggleDictation = Notification.Name("com.slavamakeenko.whisp.toggleDictation")
+    static let whispOpenSettings    = Notification.Name("com.slavamakeenko.whisp.openSettings")
+    static let whispOpenHistory     = Notification.Name("com.slavamakeenko.whisp.openHistory")
 }
 
 /// Siri / Shortcuts action that toggles dictation in the running app via a notification.

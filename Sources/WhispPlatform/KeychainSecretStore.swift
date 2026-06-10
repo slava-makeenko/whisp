@@ -18,7 +18,7 @@ public enum KeychainError: Error, Sendable {
 public struct KeychainSecretStore: Sendable {
     private let service: String
 
-    public init(service: String = "com.example.whisp.secrets") { // P5: real bundle id
+    public init(service: String = "com.slavamakeenko.whisp.secrets") {
         self.service = service
     }
 

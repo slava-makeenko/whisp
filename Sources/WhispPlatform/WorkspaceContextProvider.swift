@@ -55,8 +55,11 @@ public final class WorkspaceContextProvider: ContextProvider, @unchecked Sendabl
 // on the main thread only for recognized browsers (skipped otherwise to avoid UI stalls).
 enum BrowserURL {
     static func frontTab(bundleID: String?) -> URL? {
-        guard let bundleID, let source = scripts[bundleID],
-              let script = NSAppleScript(source: source) else { return nil }
+        guard let bundleID, let source = scripts[bundleID] else { return nil }
+        // This runs synchronously on the main thread; a hung/modal browser would otherwise
+        // block the UI indefinitely. Bound the Apple Event to 2 seconds.
+        let guarded = "with timeout of 2 seconds\n\(source)\nend timeout"
+        guard let script = NSAppleScript(source: guarded) else { return nil }
         var error: NSDictionary?
         let output = script.executeAndReturnError(&error)
         guard error == nil, let string = output.stringValue, let url = URL(string: string) else { return nil }

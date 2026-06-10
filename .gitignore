@@ -17,6 +17,9 @@ App/Resources/Models/
 # macOS
 .DS_Store
 
+# Claude Code skills (local tooling, not part of the app)
+.github/skills/
+
 # Internal working docs (kept local, not published)
 CLAUDE.md
 CONTEXT.md

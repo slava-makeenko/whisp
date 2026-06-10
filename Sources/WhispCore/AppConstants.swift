@@ -1,11 +1,11 @@
 import Foundation
 
 public enum AppConstants: Sendable {
-    /// P5: replace with the real signing bundle identifier.
-    public static let bundleIdentifier = "com.example.whisp"
+    /// The app's signing bundle identifier (matches `PRODUCT_BUNDLE_IDENTIFIER` in project.yml).
+    public static let bundleIdentifier = "com.slavamakeenko.whisp"
 
-    /// P3: replace with the real iCloud container id. Used only outside `LOCAL_BUILD`.
-    public static let cloudKitContainerIdentifier = "iCloud.com.example.whisp"
+    /// P3: real iCloud container provisioning still pending. Used only outside `LOCAL_BUILD`.
+    public static let cloudKitContainerIdentifier = "iCloud.com.slavamakeenko.whisp"
 
     /// `~/Library/Application Support/Whisp`, created on demand. Home of the three stores.
     public static func applicationSupportDirectory() throws -> URL {

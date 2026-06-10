@@ -62,6 +62,11 @@ public actor HistoryStore {
     }
 
     private static func csvEscape(_ value: String) -> String {
-        "\"" + value.replacingOccurrences(of: "\"", with: "\"\"") + "\""
+        // Neutralize spreadsheet formula injection: a cell starting with = + - @ (or a leading
+        // tab/CR) is executed as a formula by Excel/Numbers. Prefix such values with a single
+        // quote so they're treated as literal text, then quote/escape as usual.
+        let needsGuard = value.first.map { "=+-@\t\r".contains($0) } ?? false
+        let safe = needsGuard ? "'" + value : value
+        return "\"" + safe.replacingOccurrences(of: "\"", with: "\"\"") + "\""
     }
 }
