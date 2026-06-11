@@ -22,6 +22,7 @@ struct DashboardView: View {
     @State private var dropTargeted = false
     @State private var recordHovering = false
     @State private var axTrusted = AXIsProcessTrusted()
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var summary: MetricsSummary { MetricsSummary.from(metrics) }
     private var todaySessions: Int {
@@ -150,8 +151,8 @@ struct DashboardView: View {
             }
             .buttonStyle(.plain)
             .disabled(controller.state == .transcribing || controller.state == .injecting)
-            .scaleEffect(recordHovering ? 1.06 : 1)
-            .animation(.spring(response: 0.25, dampingFraction: 0.65), value: recordHovering)
+            .scaleEffect(reduceMotion ? 1 : (recordHovering ? 1.06 : 1))
+            .animation(reduceMotion ? nil : .spring(response: 0.25, dampingFraction: 0.65), value: recordHovering)
             .onHover { h in recordHovering = h; if h { NSCursor.pointingHand.push() } else { NSCursor.pop() } }
             .padding(.bottom, 10)
 
@@ -171,7 +172,7 @@ struct DashboardView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.cardBG, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         .shadow(color: Theme.cardShadow, radius: 8, x: 0, y: 3)
-        .animation(.spring(response: 0.35, dampingFraction: 0.7), value: controller.state)
+        .animation(reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 0.7), value: controller.state)
     }
 
     private var statusBadge: some View {
@@ -250,9 +251,10 @@ struct DashboardView: View {
             }
             Divider().overlay(Theme.hairline)
             HStack(spacing: 0) {
-                StatCell(icon: "flame", value: "\(streakDays)", label: "day streak")
+                StatCell(icon: "flame", value: streakDays > 0 ? "\(streakDays)" : "—", label: "day streak")
                 Divider().overlay(Theme.hairline)
-                StatCell(icon: "chart.line.uptrend.xyaxis", value: "\(todaySessions)", label: "sessions today")
+                StatCell(icon: "chart.line.uptrend.xyaxis", value: todaySessions > 0 ? "\(todaySessions)" : "—",
+                         label: "sessions today")
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -610,7 +612,7 @@ private struct RecentRowNew: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: "play.fill")
+            Image(systemName: "text.quote")
                 .font(.system(size: 10))
                 .foregroundStyle(Theme.accent)
                 .frame(width: 18)

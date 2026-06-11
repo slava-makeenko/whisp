@@ -25,6 +25,7 @@ struct RootView: View {
     @AppStorage("accentColor") private var accentColor = "violet"
     @AppStorage("fontStyle") private var fontStyle = "system"
     @AppStorage("colorScheme") private var colorSchemeRaw = "system"
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var preferredScheme: ColorScheme? {
         switch colorSchemeRaw {
@@ -44,9 +45,15 @@ struct RootView: View {
             sidebar
                 .navigationSplitViewColumnWidth(min: 210, ideal: 224, max: 280)
         } detail: {
-            detail
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Theme.windowBG)
+            // Cross-fade (+ a slight rise) between sections instead of an instant swap.
+            ZStack {
+                detail
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Theme.windowBG)
+                    .id(selection)
+                    .transition(reduceMotion ? .opacity : .opacity.combined(with: .offset(y: 6)))
+            }
+            .animation(.easeOut(duration: 0.2), value: selection)
         }
         .navigationSplitViewStyle(.balanced)
         .ignoresSafeArea(.all, edges: .top)
