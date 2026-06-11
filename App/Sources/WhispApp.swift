@@ -217,6 +217,7 @@ struct WhispApp: App {
                 .onChange(of: hotkeyModifiers) { applyHotkey() }
                 .onChange(of: hotkeyMode) { applyHotkey() }
         }
+        .windowStyle(.hiddenTitleBar)
         .commands {
             CommandGroup(after: .appInfo) {
                 Button("Check for Updates…") { updaterController.checkForUpdates() }
