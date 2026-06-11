@@ -14,13 +14,14 @@ final class UpdaterController: ObservableObject {
     @Published var status: UpdateStatus = .idle
 
     private var updater: SPUUpdater?
+    #if !LOCAL_BUILD
     private var userDriver: TrackingSparkleUserDriver?
+    #endif
     private var cancellables: Set<AnyCancellable> = []
 
     init() {
         #if LOCAL_BUILD
         updater = nil
-        userDriver = nil
         #else
         let driver = TrackingSparkleUserDriver(hostBundle: .main)
         driver.onStatusChange = { [weak self] status in self?.status = status }
