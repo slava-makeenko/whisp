@@ -6,13 +6,16 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
   test:
     name: Build & Test
     runs-on: macos-15
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
       - name: Xcode version
         run: xcodebuild -version
@@ -21,7 +24,11 @@ jobs:
         run: brew install xcodegen
 
       - name: Generate Xcode project
-        run: xcodegen generate
+        run: |
+          xcodegen generate
+          # Reuse the committed dependency pins for xcodebuild's SPM resolution.
+          mkdir -p whisp.xcodeproj/project.xcworkspace/xcshareddata/swiftpm
+          cp Package.resolved whisp.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
 
       - name: Build (smoke check)
         run: |

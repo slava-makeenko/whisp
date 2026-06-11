@@ -24,16 +24,21 @@ jobs:
 
     env:
       SPARKLE_VERSION: 2.9.2
+      # SHA256 of Sparkle-2.9.2.tar.xz — update together with SPARKLE_VERSION.
+      SPARKLE_TOOLS_SHA256: 1cb340cbbef04c6c0d162078610c25e2221031d794a3449d89f2f56f4df77c95
       SPARKLE_FEED_URL: https://github.com/slava-makeenko/whisp/releases/latest/download/appcast.xml
       SPARKLE_PUBLIC_ED_KEY: ${{ secrets.SPARKLE_PUBLIC_ED_KEY }}
-      SPARKLE_PRIVATE_ED_KEY: ${{ secrets.SPARKLE_PRIVATE_ED_KEY }}
+      # SPARKLE_PRIVATE_ED_KEY is deliberately NOT job-level env: it must stay
+      # invisible to third-party action steps. Only the two steps below get it.
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           ref: ${{ inputs.tag || github.ref }}
 
       - name: Validate Sparkle secrets
+        env:
+          SPARKLE_PRIVATE_ED_KEY: ${{ secrets.SPARKLE_PRIVATE_ED_KEY }}
         run: |
           test -n "$SPARKLE_PUBLIC_ED_KEY" || { echo "Missing SPARKLE_PUBLIC_ED_KEY secret"; exit 1; }
           test -n "$SPARKLE_PRIVATE_ED_KEY" || { echo "Missing SPARKLE_PRIVATE_ED_KEY secret"; exit 1; }
@@ -58,11 +63,16 @@ jobs:
         run: |
           curl -L -o Sparkle.tar.xz \
             "https://github.com/sparkle-project/Sparkle/releases/download/${SPARKLE_VERSION}/Sparkle-${SPARKLE_VERSION}.tar.xz"
+          echo "${SPARKLE_TOOLS_SHA256}  Sparkle.tar.xz" | shasum -a 256 -c -
           tar -xf Sparkle.tar.xz
           test -x bin/generate_appcast
 
       - name: Generate Xcode project
-        run: xcodegen generate
+        run: |
+          xcodegen generate
+          # Reuse the committed dependency pins for xcodebuild's SPM resolution.
+          mkdir -p whisp.xcodeproj/project.xcworkspace/xcshareddata/swiftpm
+          cp Package.resolved whisp.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
 
       - name: Build Release with Sparkle enabled
         run: |
@@ -104,6 +114,8 @@ jobs:
           echo "DMG_PATH=$DMG_NAME" >> "$GITHUB_ENV"
 
       - name: Generate Sparkle appcast
+        env:
+          SPARKLE_PRIVATE_ED_KEY: ${{ secrets.SPARKLE_PRIVATE_ED_KEY }}
         run: |
           ARCHIVE_DIR=$(mktemp -d)
           cp "$DMG_PATH" "$ARCHIVE_DIR/$DMG_NAME"
@@ -123,7 +135,7 @@ jobs:
           echo "APPCAST_PATH=appcast.xml" >> "$GITHUB_ENV"
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
           name: whisp ${{ env.VERSION }}
           tag_name: ${{ env.TAG }}
