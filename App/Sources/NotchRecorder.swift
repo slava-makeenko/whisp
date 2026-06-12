@@ -62,23 +62,44 @@ final class NotchRecorderController {
             panel.ignoresMouseEvents = true
             panel.hidesOnDeactivate = false
             panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
+            panel.alphaValue = 0
+            self.panel = panel
+        }
+        guard let panel else { return }
+        // The hosting view is torn down on hide (stopping its render ticker) — rebuild it here.
+        if panel.contentViewController == nil {
             let hc = NSHostingController(rootView: NotchRecorderView(controller: observed))
             // Lock the hosting controller to our pill size so it never causes the panel
             // to resize before SwiftUI has laid out (which would break the first-show position).
             hc.view.setFrameSize(NSSize(width: pillW, height: pillH))
             panel.contentViewController = hc
-            self.panel = panel
         }
         // Position using known constants — panel.frame.size is unreliable before first layout.
-        if let panel { position(panel) }
-        panel?.orderFrontRegardless()
-        // Re-position one run-loop tick later in case the window server moved it on first display.
-        if let panel {
-            DispatchQueue.main.async { self.position(panel) }
+        position(panel)
+        panel.orderFrontRegardless()
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.18
+            ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            panel.animator().alphaValue = 1
         }
+        // Re-position one run-loop tick later in case the window server moved it on first display.
+        DispatchQueue.main.async { self.position(panel) }
     }
 
-    private func hide() { panel?.orderOut(nil) }
+    private func hide() {
+        guard let panel, panel.isVisible else { return }
+        NSAnimationContext.runAnimationGroup({ ctx in
+            ctx.duration = 0.14
+            ctx.timingFunction = CAMediaTimingFunction(name: .easeIn)
+            panel.animator().alphaValue = 0
+        }, completionHandler: {
+            // A new show() may have started mid-fade — only tear down if we stayed hidden.
+            guard panel.alphaValue == 0 else { return }
+            panel.orderOut(nil)
+            // Release the hosting view so its 25fps ticker stops while the pill is hidden.
+            panel.contentViewController = nil
+        })
+    }
 
     private func position(_ panel: NSPanel) {
         let screen = NSScreen.screens.first { $0.safeAreaInsets.top > 0 } ?? NSScreen.main
