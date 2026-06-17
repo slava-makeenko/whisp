@@ -33,17 +33,17 @@ struct AIModelCard: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
                 Image(systemName: "arrow.down.circle")
-                    .font(.system(size: 13))
+                    .font(.geist(size: 13))
                     .foregroundStyle(Theme.accent)
                 Text(model.displayName)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.geist(size: 13, weight: .semibold))
                     .foregroundStyle(Theme.primaryText)
                 Spacer()
                 Button {
                     store.cancelDownload(model)
                 } label: {
                     Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 14))
+                        .font(.geist(size: 14))
                         .foregroundStyle(Theme.secondaryText)
                 }
                 .buttonStyle(.plain)
@@ -57,11 +57,11 @@ struct AIModelCard: View {
 
             HStack {
                 Text("Downloading…")
-                    .font(.system(size: 11))
+                    .font(.geist(size: 11))
                     .foregroundStyle(Theme.secondaryText)
                 Spacer()
                 Text("\(Int(progress * 100))%  of \(model.sizeFormatted)")
-                    .font(.system(size: 11))
+                    .font(.geist(size: 11))
                     .foregroundStyle(Theme.secondaryText)
             }
         }
@@ -76,9 +76,9 @@ struct AIModelCard: View {
     private func activeChip(_ model: OnDeviceModel) -> some View {
         HStack(spacing: 6) {
             Image(systemName: "cpu")
-                .font(.system(size: 11))
+                .font(.geist(size: 11))
             Text("On-device AI · \(model.displayName)")
-                .font(.system(size: 12, weight: .medium))
+                .font(.geist(size: 12, weight: .medium))
         }
         .foregroundStyle(Theme.accent)
         .padding(.horizontal, 12)

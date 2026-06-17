@@ -8,9 +8,12 @@ extension View {
     }
 
     /// Shows the pointing-hand cursor while hovering.
+    /// Uses `set()` (not the push/pop stack) so a skipped exit event — which AppKit
+    /// does not synthesize when a hovered view is disabled or removed — cannot leave
+    /// the cursor stuck or grow the cursor stack.
     func pointingCursor() -> some View {
         onHover { inside in
-            if inside { NSCursor.pointingHand.push() } else { NSCursor.pop() }
+            if inside { NSCursor.pointingHand.set() } else { NSCursor.arrow.set() }
         }
     }
 }

@@ -124,7 +124,7 @@ struct NotchRecorderView: View {
         Group {
             if reduceMotion {
                 Image(systemName: "mic.fill")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.geist(size: 13, weight: .semibold))
                     .foregroundStyle(.white)
             } else {
                 EqualizerBars(time: now.timeIntervalSinceReferenceDate,

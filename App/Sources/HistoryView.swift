@@ -94,13 +94,13 @@ private struct HistoryEntryRow: View {
                     Text("·")
                     Text(item.backend)
                 }
-                .font(.caption).foregroundStyle(Theme.secondaryText)
+                .font(.geist(size: 11)).foregroundStyle(Theme.secondaryText)
             }
             Spacer()
             if hovering {
-                Button { copy() } label: { Image(systemName: "doc.on.doc").font(.system(size: 12)) }
+                Button { copy() } label: { Image(systemName: "doc.on.doc").font(.geist(size: 12)) }
                     .buttonStyle(.plain).foregroundStyle(Theme.secondaryText).pointingCursor()
-                Button(action: onDelete) { Image(systemName: "trash").font(.system(size: 12)) }
+                Button(action: onDelete) { Image(systemName: "trash").font(.geist(size: 12)) }
                     .buttonStyle(.plain).foregroundStyle(Theme.secondaryText).pointingCursor()
             }
         }

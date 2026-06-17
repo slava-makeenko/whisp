@@ -5,6 +5,7 @@ extension Notification.Name {
     static let whispToggleDictation = Notification.Name("com.slavamakeenko.whisp.toggleDictation")
     static let whispOpenSettings    = Notification.Name("com.slavamakeenko.whisp.openSettings")
     static let whispOpenHistory     = Notification.Name("com.slavamakeenko.whisp.openHistory")
+    static let whispOpenPowerMode   = Notification.Name("com.slavamakeenko.whisp.openPowerMode")
 }
 
 /// Siri / Shortcuts action that toggles dictation in the running app via a notification.

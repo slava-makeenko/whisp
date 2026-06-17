@@ -6,6 +6,11 @@ struct WaveformView: View {
     var level: Float
     var tint: Color = .accentColor
     var barCount: Int = 5
+    /// Peak bar height. Callers that constrain the view to a small frame should pass a
+    /// matching value so loud input never overflows (the bar math is derived from this).
+    var maxBarHeight: CGFloat = 30
+    var barWidth: CGFloat = 3
+    var spacing: CGFloat = 3
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -21,15 +26,16 @@ struct WaveformView: View {
     }
 
     private func bars(amplitude: CGFloat, t: TimeInterval) -> some View {
-        HStack(spacing: 3) {
+        let base = max(3, maxBarHeight * 0.13)
+        return HStack(spacing: spacing) {
             ForEach(0..<barCount, id: \.self) { index in
                 let phase = (sin(t * 6 + Double(index) * 0.9) + 1) / 2          // 0...1
-                let height = 4 + amplitude * 26 * (0.45 + 0.55 * CGFloat(phase))
+                let height = base + amplitude * (maxBarHeight - base) * (0.45 + 0.55 * CGFloat(phase))
                 Capsule()
                     .fill(tint)
-                    .frame(width: 3, height: max(3, height))
+                    .frame(width: barWidth, height: max(3, height))
             }
         }
-        .frame(maxWidth: .infinity, alignment: .center)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
     }
 }

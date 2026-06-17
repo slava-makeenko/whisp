@@ -26,7 +26,7 @@ struct WhispApp: App {
     @AppStorage("transcriptionEngine") private var transcriptionEngine = "auto"
     @AppStorage("commandModeEnabled") private var commandModeEnabled = false
     @AppStorage("appLanguage") private var appLanguage = "system"
-    @AppStorage("accentColor") private var accentColor = "violet"
+    @AppStorage("accentColor") private var accentColor = "clay"
     @AppStorage("fontStyle") private var fontStyle = "system"
     @AppStorage("colorScheme") private var colorSchemeRaw = "system"
     private var preferredScheme: ColorScheme? {
@@ -187,7 +187,7 @@ struct WhispApp: App {
         }
     }
 
-    private var appAccent: Color { (AccentPalette(rawValue: accentColor) ?? .violet).color }
+    private var appAccent: Color { (AccentPalette(rawValue: accentColor) ?? .clay).color }
     private var appFontDesign: Font.Design { (AppFontStyle(rawValue: fontStyle) ?? .system).design }
 
     var body: some Scene {

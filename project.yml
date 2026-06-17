@@ -9,8 +9,8 @@ options:
 settings:
   base:
     SWIFT_VERSION: "6.0"
-    MARKETING_VERSION: "0.1.4"
-    CURRENT_PROJECT_VERSION: "104"
+    MARKETING_VERSION: "0.1.5"
+    CURRENT_PROJECT_VERSION: "105"
     DEVELOPMENT_TEAM: ""               # P5
 packages:
   Whisp:
@@ -29,6 +29,8 @@ targets:
       - App/Sources
       - App/Resources/Assets.xcassets
       - App/Resources/Localizable.xcstrings
+      - path: App/Resources/Fonts
+        type: folder
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.slavamakeenko.whisp

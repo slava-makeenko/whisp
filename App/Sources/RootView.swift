@@ -22,8 +22,7 @@ struct RootView: View {
 
     @State private var selection: Section = .dashboard
     @EnvironmentObject private var updater: UpdaterController
-    @AppStorage("accentColor") private var accentColor = "violet"
-    @AppStorage("fontStyle") private var fontStyle = "system"
+    @AppStorage("accentColor") private var accentColor = "clay"
     @AppStorage("colorScheme") private var colorSchemeRaw = "system"
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -57,8 +56,8 @@ struct RootView: View {
         }
         .navigationSplitViewStyle(.balanced)
         .ignoresSafeArea(.all, edges: .top)
-        .tint((AccentPalette(rawValue: accentColor) ?? .violet).color)
-        .fontDesign((AppFontStyle(rawValue: fontStyle) ?? .system).design)
+        .tint((AccentPalette(rawValue: accentColor) ?? .clay).color)
+        .font(.geist(size: 13))
         .preferredColorScheme(preferredScheme)
         .wispWindowChrome()
         .onReceive(NotificationCenter.default.publisher(for: .whispOpenSettings)) { _ in
@@ -67,9 +66,12 @@ struct RootView: View {
         .onReceive(NotificationCenter.default.publisher(for: .whispOpenHistory)) { _ in
             selection = .history
         }
+        .onReceive(NotificationCenter.default.publisher(for: .whispOpenPowerMode)) { _ in
+            selection = .powerMode
+        }
         .overlay(alignment: .bottomTrailing) {
             Text(appVersion)
-                .font(.system(size: 11))
+                .font(.geist(size: 11))
                 .foregroundStyle(Theme.secondaryText.opacity(0.6))
                 .padding(.horizontal, 16)
                 .padding(.vertical, 10)
@@ -85,7 +87,7 @@ struct RootView: View {
                     .resizable().renderingMode(.template).frame(width: 19, height: 19)
                     .foregroundStyle(Theme.primaryText)
                 Text("whisp")
-                    .font(.system(size: 19, weight: .bold))
+                    .font(.geist(size: 19, weight: .bold))
                     .foregroundStyle(Theme.primaryText)
             }
             .padding(.horizontal, 10).padding(.top, 10).padding(.bottom, 16)
@@ -138,11 +140,11 @@ private struct UpdateSidebarCard: View {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(alignment: .top, spacing: 8) {
                     Image(systemName: icon)
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.geist(size: 13, weight: .semibold))
                         .foregroundStyle(Theme.accent)
                         .frame(width: 18)
                     Text(message)
-                        .font(.system(size: 12, weight: .medium))
+                        .font(.geist(size: 12, weight: .medium))
                         .foregroundStyle(Theme.primaryText)
                         .lineLimit(2)
                 }
@@ -163,7 +165,7 @@ private struct UpdateSidebarCard: View {
 
                 if let actionTitle = status.actionTitle {
                     Button(actionTitle, action: install)
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.geist(size: 12, weight: .semibold))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 6)
@@ -203,21 +205,22 @@ private struct SidebarRow: View {
         Button(action: action) {
             HStack(spacing: 11) {
                 Image(systemName: symbol)
-                    .font(.system(size: 15))
+                    .font(.geist(size: 15))
+                    .foregroundStyle(selected ? Theme.accent : Theme.secondaryText)
                     .frame(width: 20)
                 Text(LocalizedStringKey(title))
-                    .font(.system(size: 14, weight: selected ? .semibold : .regular))
+                    .font(.geist(size: 14, weight: selected ? .semibold : .medium))
+                    .foregroundStyle(selected ? Theme.primaryText : Theme.secondaryText)
                 Spacer(minLength: 0)
             }
-            .foregroundStyle(selected ? Theme.primaryText : Theme.secondaryText)
             .padding(.horizontal, 10)
-            .padding(.vertical, 7)
+            .padding(.vertical, 8)
             .background(
                 selected ? Theme.selection : (hovering ? Theme.selection.opacity(0.5) : .clear),
-                in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                in: RoundedRectangle(cornerRadius: Theme.Radius.sm, style: .continuous))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .onHover { hovering = $0; if $0 { NSCursor.pointingHand.push() } else { NSCursor.pop() } }
+        .onHover { hovering = $0; if $0 { NSCursor.pointingHand.set() } else { NSCursor.arrow.set() } }
     }
 }

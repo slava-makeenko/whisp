@@ -23,7 +23,7 @@ struct SettingsView: View {
     @AppStorage("enhancementStyle") private var enhancementStyle = "auto"
     @AppStorage("commandModeEnabled") private var commandModeEnabled = false
     @AppStorage("appLanguage") private var appLanguage = "system"
-    @AppStorage("accentColor") private var accentColor = "violet"
+    @AppStorage("accentColor") private var accentColor = "clay"
     @AppStorage("fontStyle") private var fontStyle = "system"
     @AppStorage("colorScheme") private var colorSchemeRaw = "system"
     @AppStorage("enhancementProvider") private var enhancementProviderID = "openai"
@@ -117,7 +117,7 @@ struct SettingsView: View {
     private var onDeviceModelSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("ON-DEVICE MODEL")
-                .font(.system(size: 11, weight: .semibold))
+                .font(.geist(size: 11, weight: .semibold))
                 .foregroundStyle(Theme.secondaryText)
             SettingsGroup {
                 ForEach(OnDeviceModel.catalog) { model in
@@ -144,11 +144,11 @@ struct SettingsView: View {
             } label: {
                 VStack(alignment: .trailing, spacing: 2) {
                     Text("Download")
-                        .font(.system(size: 12, weight: .medium))
+                        .font(.geist(size: 12, weight: .medium))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 10).padding(.vertical, 5)
                         .background(Theme.accent, in: Capsule())
-                    Text(model.sizeFormatted).font(.system(size: 10)).foregroundStyle(Theme.secondaryText)
+                    Text(model.sizeFormatted).font(.geist(size: 10)).foregroundStyle(Theme.secondaryText)
                 }
             }
             .buttonStyle(.plain).pointingCursor()
@@ -158,25 +158,25 @@ struct SettingsView: View {
                 ProgressView(value: progress).progressViewStyle(.linear)
                     .frame(width: 100).tint(Theme.accent)
                 HStack(spacing: 8) {
-                    Text("\(Int(progress * 100))%").font(.system(size: 10)).foregroundStyle(Theme.secondaryText)
+                    Text("\(Int(progress * 100))%").font(.geist(size: 10)).foregroundStyle(Theme.secondaryText)
                     Button("Cancel") { modelStore.cancelDownload(model) }
-                        .font(.system(size: 10)).foregroundStyle(.red).buttonStyle(.plain).pointingCursor()
+                        .font(.geist(size: 10)).foregroundStyle(.red).buttonStyle(.plain).pointingCursor()
                 }
             }
 
         case .downloaded:
             if isActive {
                 Label("Active", systemImage: "checkmark.circle.fill")
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.geist(size: 12, weight: .medium))
                     .foregroundStyle(.green)
             } else {
                 HStack(spacing: 8) {
                     Button("Use") { modelStore.select(model) }
-                        .font(.system(size: 12, weight: .medium))
+                        .font(.geist(size: 12, weight: .medium))
                         .foregroundStyle(Theme.accent)
                         .buttonStyle(.plain).pointingCursor()
                     Button { modelStore.delete(model) } label: {
-                        Image(systemName: "trash").font(.system(size: 12))
+                        Image(systemName: "trash").font(.geist(size: 12))
                     }
                     .buttonStyle(.plain).foregroundStyle(Theme.secondaryText).pointingCursor()
                 }
@@ -184,7 +184,7 @@ struct SettingsView: View {
 
         case .failed:
             Button("Retry") { modelStore.startDownload(model) }
-                .font(.system(size: 12, weight: .medium))
+                .font(.geist(size: 12, weight: .medium))
                 .foregroundStyle(.red).buttonStyle(.plain).pointingCursor()
         }
     }
@@ -247,7 +247,7 @@ struct SettingsView: View {
                             updater.checkForUpdates()
                         } label: {
                             Text("Check for Updates…")
-                                .font(.system(size: 12, weight: .semibold))
+                                .font(.geist(size: 12, weight: .semibold))
                                 .foregroundStyle(.white)
                                 .padding(.horizontal, 10).padding(.vertical, 6)
                                 .background(Theme.accent, in: Capsule())
@@ -259,7 +259,7 @@ struct SettingsView: View {
 
                         if let message = updater.status.settingsMessage {
                             Text(message)
-                                .font(.system(size: 10))
+                                .font(.geist(size: 10))
                                 .foregroundStyle(Theme.secondaryText)
                                 .multilineTextAlignment(.trailing)
                                 .frame(maxWidth: 220, alignment: .trailing)
@@ -280,7 +280,7 @@ struct SettingsView: View {
         } label: {
             HStack(spacing: 4) {
                 Text(DictationLanguage.summary(dictationLanguages)).foregroundStyle(Theme.primaryText)
-                Image(systemName: "chevron.up.chevron.down").font(.system(size: 9)).foregroundStyle(Theme.secondaryText)
+                Image(systemName: "chevron.up.chevron.down").font(.geist(size: 9)).foregroundStyle(Theme.secondaryText)
             }
         }
         .menuStyle(.borderlessButton).fixedSize()
@@ -388,16 +388,16 @@ struct SettingsView: View {
             SettingsGroup {
                 if entries.isEmpty {
                     Text("No terms yet — add one below to auto-replace it in transcriptions.")
-                        .font(.system(size: 14)).foregroundStyle(Theme.secondaryText)
+                        .font(.geist(size: 14)).foregroundStyle(Theme.secondaryText)
                         .padding(.vertical, 14).frame(maxWidth: .infinity, alignment: .leading)
                 }
                 ForEach(entries) { entry in
                     HStack(spacing: 10) {
                         Text(entry.term).foregroundStyle(Theme.primaryText)
-                        Image(systemName: "arrow.right").font(.caption).foregroundStyle(Theme.secondaryText)
+                        Image(systemName: "arrow.right").font(.geist(size: 11)).foregroundStyle(Theme.secondaryText)
                         Text(entry.replacement.isEmpty ? "—" : entry.replacement).foregroundStyle(Theme.secondaryText)
                         Spacer()
-                        Button { deleteEntry(entry) } label: { Image(systemName: "trash").font(.system(size: 12)) }
+                        Button { deleteEntry(entry) } label: { Image(systemName: "trash").font(.geist(size: 12)) }
                             .buttonStyle(.plain).foregroundStyle(Theme.secondaryText).pointingCursor()
                     }
                     .padding(.vertical, 12)
@@ -546,9 +546,9 @@ private struct SettingsCategoryTab: View {
             VStack(spacing: 3) {
                 HStack(spacing: 5) {
                     Image(systemName: cat.symbol)
-                        .font(.system(size: 12, weight: selected ? .semibold : .regular))
+                        .font(.geist(size: 12, weight: selected ? .semibold : .regular))
                     Text(cat.title)
-                        .font(.system(size: 13, weight: selected ? .semibold : .regular))
+                        .font(.geist(size: 13, weight: selected ? .semibold : .regular))
                 }
                 .foregroundStyle(
                     selected ? Theme.primaryText
@@ -564,7 +564,7 @@ private struct SettingsCategoryTab: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .onHover { hovering = $0; if $0 { NSCursor.pointingHand.push() } else { NSCursor.pop() } }
+        .onHover { hovering = $0; if $0 { NSCursor.pointingHand.set() } else { NSCursor.arrow.set() } }
     }
 }
 
@@ -593,9 +593,9 @@ private struct SettingRow<Control: View>: View {
     var body: some View {
         HStack(alignment: .center, spacing: 16) {
             VStack(alignment: .leading, spacing: 3) {
-                Text(title).font(.system(size: 15, weight: .semibold)).foregroundStyle(Theme.primaryText)
+                Text(title).font(.geist(size: 15, weight: .semibold)).foregroundStyle(Theme.primaryText)
                 if let description {
-                    Text(description).font(.system(size: 13)).foregroundStyle(Theme.secondaryText)
+                    Text(description).font(.geist(size: 13)).foregroundStyle(Theme.secondaryText)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -632,7 +632,7 @@ private struct WisprToggleStyle: ToggleStyle {
 private struct WisprButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 14, weight: .medium))
+            .font(.geist(size: 14, weight: .medium))
             .foregroundStyle(Theme.primaryText)
             .padding(.horizontal, 16).padding(.vertical, 8)
             .background(Theme.groupBG, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
@@ -657,7 +657,7 @@ private struct WispValueMenu<Value: Hashable>: View {
             HStack(spacing: 4) {
                 Text(LocalizedStringKey(options.first { $0.value == selection }?.label ?? ""))
                     .foregroundStyle(Theme.primaryText)
-                Image(systemName: "chevron.up.chevron.down").font(.system(size: 9)).foregroundStyle(Theme.secondaryText)
+                Image(systemName: "chevron.up.chevron.down").font(.geist(size: 9)).foregroundStyle(Theme.secondaryText)
             }
         }
         .menuStyle(.borderlessButton).fixedSize()

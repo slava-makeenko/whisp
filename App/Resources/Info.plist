@@ -21,6 +21,8 @@
     </array>
     <key>LSMinimumSystemVersion</key>
     <string>14.4</string>
+    <key>ATSApplicationFontsPath</key>
+    <string>Fonts</string>
     <key>NSMicrophoneUsageDescription</key>
     <string>whisp transcribes your speech on-device.</string>
     <key>NSSpeechRecognitionUsageDescription</key>

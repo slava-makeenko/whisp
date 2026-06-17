@@ -64,7 +64,7 @@ struct MiniRecorderView: View {
 
             Text(label)
                 .lineLimit(1)
-                .font(.callout)
+                .font(.geist(size: 16))
                 .foregroundStyle(.primary)
         }
         .padding(.horizontal, 18)

@@ -33,7 +33,7 @@ struct PowerModeView: View {
                 CardSection("Per-app formatting") {
                     if rules.isEmpty {
                         Text("No rules yet. Add an app below to give it its own formatting style.")
-                            .font(.callout).foregroundStyle(Theme.secondaryText)
+                            .font(.geist(size: 16)).foregroundStyle(Theme.secondaryText)
                     }
                     ForEach(rules) { rule in
                         HStack(spacing: 12) {
@@ -45,7 +45,7 @@ struct PowerModeView: View {
                             .labelsHidden()
                             .frame(width: 150)
                             Button { deleteRule(rule.bundleID) } label: {
-                                Image(systemName: "trash").font(.system(size: 12))
+                                Image(systemName: "trash").font(.geist(size: 12))
                             }
                             .buttonStyle(.plain).foregroundStyle(Theme.secondaryText).pointingCursor()
                         }

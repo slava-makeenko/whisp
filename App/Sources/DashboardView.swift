@@ -21,246 +21,443 @@ struct DashboardView: View {
 
     @State private var dropTargeted = false
     @State private var recordHovering = false
+    @State private var heroPulse = false
     @State private var axTrusted = AXIsProcessTrusted()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var summary: MetricsSummary { MetricsSummary.from(metrics) }
-    private var todaySessions: Int {
-        let cal = Calendar.current
-        return transcriptions.filter { cal.isDateInToday($0.createdAt) }.count
-    }
     private var totalWords: Int {
         transcriptions.reduce(0) { $0 + $1.text.split { $0 == " " || $0 == "\n" }.count }
     }
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                headerRow
+            VStack(alignment: .leading, spacing: 22) {
+                greetingRow
                 if !axTrusted { accessibilityBanner }
-                topCards
-                if !controller.liveText.isEmpty { liveTextView }
-                recentSection
-                filesSection
+
+                HStack(alignment: .top, spacing: 20) {
+                    // Main column
+                    VStack(spacing: 16) {
+                        heroCard
+                        if controller.state != .idle || !controller.liveText.isEmpty || controller.lastInjection != nil {
+                            liveCard
+                        }
+                        filesCard
+                        recentSection
+                    }
+                    .frame(maxWidth: .infinity, alignment: .top)
+
+                    // Right rail
+                    VStack(spacing: 16) {
+                        statsPanel
+                        aiCard
+                    }
+                    .frame(width: 268)
+                }
             }
-            .padding(.horizontal, 20)
-            .padding(.bottom, 20)
-            .padding(.top, 32)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 28)
+            .padding(.top, 28)
+            .padding(.bottom, 28)
+            .frame(maxWidth: 1120, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
         }
         .scrollContentBackground(.hidden)
         .background(Theme.windowBG)
+        .onAppear { heroPulse = true }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             axTrusted = AXIsProcessTrusted()
         }
+        .animation(reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 0.8), value: controller.state)
     }
 
-    // MARK: - Header
+    // MARK: - Greeting
 
-    private var headerRow: some View {
-        HStack(alignment: .center) {
-            HStack(spacing: 9) {
-                Text("Hey \(firstName), get back into the flow with")
-                    .font(.system(size: 22, weight: .semibold))
-                    .foregroundStyle(Theme.primaryText)
-                HotkeyChip(label: hotkeyBadge)
+    private var greetingRow: some View {
+        HStack(alignment: .center, spacing: 10) {
+            Text("Hey \(firstName), get back into the flow with")
+                .font(.geist(size: 22, weight: .semibold))
+                .kerning(-0.3)
+                .foregroundStyle(Theme.primaryText)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: 6) {
+                ForEach(Array(hotkeyKeycaps.enumerated()), id: \.offset) { idx, cap in
+                    if idx > 0 {
+                        Text("+").font(.geist(size: 13, weight: .medium)).foregroundStyle(Theme.mutedText)
+                    }
+                    HotkeyChip(label: cap)
+                }
             }
-            Spacer()
-            Button {
-                colorSchemeRaw = colorSchemeRaw == "dark" ? "light" : "dark"
-            } label: {
-                Image(systemName: colorSchemeRaw == "dark" ? "sun.max" : "moon")
-                    .font(.system(size: 14))
-                    .foregroundStyle(Theme.secondaryText)
-                    .frame(width: 34, height: 34)
-                    .background(Theme.cardBG, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    .shadow(color: Theme.cardShadow, radius: 4, x: 0, y: 2)
-            }
-            .buttonStyle(.plain).pointingCursor()
+
+            Spacer(minLength: 12)
+
+            recordButton
+            themeToggle
         }
+    }
+
+    private var recordButton: some View {
+        Button(action: controller.toggle) {
+            ZStack {
+                Circle()
+                    .fill(controller.state == .recording
+                          ? AnyShapeStyle(LinearGradient(colors: [.red, Color(red: 0.8, green: 0.1, blue: 0.2)],
+                                                         startPoint: .topLeading, endPoint: .bottomTrailing))
+                          : AnyShapeStyle(Theme.accent))
+                    .frame(width: 38, height: 38)
+                    .shadow(color: (controller.state == .recording ? Color.red : Theme.accent).opacity(0.35),
+                            radius: 8, x: 0, y: 4)
+                if controller.state == .recording {
+                    WaveformView(level: controller.level, tint: .white, barCount: 5,
+                                 maxBarHeight: 12, barWidth: 2, spacing: 1.5)
+                        .frame(width: 18, height: 12)
+                } else {
+                    Image(systemName: controller.state == .transcribing ? "waveform" : "mic.fill")
+                        .font(.geist(size: 15, weight: .semibold))
+                        .foregroundStyle(.white)
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .disabled(controller.state == .transcribing || controller.state == .injecting)
+        .scaleEffect(reduceMotion ? 1 : (recordHovering ? 1.08 : 1))
+        .animation(reduceMotion ? nil : .spring(response: 0.25, dampingFraction: 0.6), value: recordHovering)
+        .onHover { h in recordHovering = h; if h { NSCursor.pointingHand.set() } else { NSCursor.arrow.set() } }
+        .help(controller.state == .recording ? "Stop dictation" : "Start dictation")
+    }
+
+    private var themeToggle: some View {
+        Button {
+            colorSchemeRaw = colorSchemeRaw == "dark" ? "light" : "dark"
+        } label: {
+            Image(systemName: colorSchemeRaw == "dark" ? "sun.max" : "moon")
+                .font(.geist(size: 14))
+                .foregroundStyle(Theme.secondaryText)
+                .frame(width: 38, height: 38)
+                .background(Theme.cardBG, in: RoundedRectangle(cornerRadius: Theme.Radius.sm, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: Theme.Radius.sm, style: .continuous).stroke(Theme.hairline))
+                .fdShadowSm()
+        }
+        .buttonStyle(.plain).pointingCursor()
+        .help("Toggle appearance")
     }
 
     private var firstName: String {
         NSFullUserName().split(separator: " ").first.map(String.init) ?? "there"
     }
 
-    private var hotkeyBadge: String {
+    /// Hotkey rendered as individual keycaps (modifiers then key).
+    private var hotkeyKeycaps: [String] {
         let mods = HotkeyModifiers(rawValue: hotkeyModifiers)
+        var caps: [String] = []
         if hotkeyKeyCode < 0 {
-            if mods.contains(.fn) { return "fn" }
-            if mods.contains(.command) { return "⌘" }
-            if mods.contains(.option) { return "⌥" }
-            if mods.contains(.control) { return "⌃" }
-            return "fn"
+            // Modifier-only (double-tap) hotkey
+            if mods.contains(.fn)      { caps.append("fn") }
+            if mods.contains(.command) { caps.append("⌘") }
+            if mods.contains(.option)  { caps.append("⌥") }
+            if mods.contains(.control) { caps.append("⌃") }
+            return caps.isEmpty ? ["fn"] : caps
         }
-        var s = ""
-        if mods.contains(.control) { s += "⌃" }
-        if mods.contains(.option)  { s += "⌥" }
-        if mods.contains(.command) { s += "⌘" }
-        s += hotkeyKeyCode == 49 ? "Space" : "·"
-        return s
+        if mods.contains(.control) { caps.append("⌃") }
+        if mods.contains(.option)  { caps.append("⌥") }
+        if mods.contains(.command) { caps.append("⌘") }
+        caps.append(hotkeyKeyCode == 49 ? "Space" : "·")
+        return caps
     }
 
-    // MARK: - Top 3 cards
+    private var hotkeyInline: String { hotkeyKeycaps.joined(separator: " ") }
 
-    private var topCards: some View {
-        HStack(alignment: .top, spacing: 14) {
-            recordCard
-            statsCard
-            aiCard
-        }
-        .frame(maxWidth: .infinity)
-    }
+    // MARK: - Hero
 
-    // MARK: - Record card
+    private var heroCard: some View {
+        Button {
+            NotificationCenter.default.post(name: .whispOpenPowerMode, object: nil)
+        } label: {
+            HStack(alignment: .center, spacing: 16) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Make whisp sound like you")
+                        .font(.geist(size: 26, weight: .semibold))
+                        .kerning(-0.4)
+                        .foregroundStyle(.white)
+                    Text("Set up different writing styles for different apps.")
+                        .font(.geist(size: 14))
+                        .foregroundStyle(.white.opacity(0.72))
 
-    private var recordCard: some View {
-        VStack(spacing: 0) {
-            if let start = controller.recordingStartedAt {
-                TimelineView(.periodic(from: start, by: 1)) { ctx in
-                    Text(Self.elapsed(from: start, to: ctx.date))
-                        .font(.system(size: 26, weight: .bold, design: .rounded))
-                        .monospacedDigit().foregroundStyle(.red)
+                    HStack(spacing: 7) {
+                        ZStack {
+                            Circle().fill(Color(Fluid.peach300)).frame(width: 7, height: 7)
+                            Circle().stroke(Color(Fluid.peach300).opacity(0.6), lineWidth: 2)
+                                .frame(width: 7, height: 7)
+                                .scaleEffect(heroPulse && !reduceMotion ? 2.4 : 1)
+                                .opacity(heroPulse && !reduceMotion ? 0 : 0.8)
+                                .animation(reduceMotion ? nil : .easeInOut(duration: 2.4).repeatForever(autoreverses: false),
+                                           value: heroPulse)
+                        }
+                        Text("Start now")
+                            .font(.geist(size: 13, weight: .semibold))
+                            .foregroundStyle(Color(Fluid.ink))
+                    }
+                    .padding(.horizontal, 14).padding(.vertical, 8)
+                    .background(.white, in: Capsule())
+                    .padding(.top, 6)
                 }
-                .padding(.bottom, 8)
+                Spacer(minLength: 0)
             }
+            .padding(24)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Theme.gradDusk, in: RoundedRectangle(cornerRadius: Theme.Radius.md, style: .continuous))
+            .fdShadowLg()
+            .contentShape(RoundedRectangle(cornerRadius: Theme.Radius.md, style: .continuous))
+        }
+        .buttonStyle(HeroButtonStyle())
+        .pointingCursor()
+    }
 
-            // Circular mic button
-            Button(action: controller.toggle) {
-                ZStack {
-                    Circle()
-                        .fill(
-                            controller.state == .recording
-                            ? LinearGradient(colors: [.red, Color(red: 0.8, green: 0.1, blue: 0.2)],
-                                             startPoint: .topLeading, endPoint: .bottomTrailing)
-                            : LinearGradient(colors: [Theme.accent, Theme.accent.opacity(0.7)],
-                                             startPoint: .topLeading, endPoint: .bottomTrailing)
-                        )
-                        .frame(width: 80, height: 80)
-                        .shadow(color: (controller.state == .recording ? Color.red : Theme.accent).opacity(0.35),
-                                radius: 12, x: 0, y: 6)
+    // MARK: - Live recording feedback
+
+    private var liveCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if controller.state != .idle {
+                HStack(spacing: 10) {
+                    if let start = controller.recordingStartedAt {
+                        TimelineView(.periodic(from: start, by: 1)) { ctx in
+                            Text(Self.elapsed(from: start, to: ctx.date))
+                                .font(.geistMono(size: 15, weight: .semibold))
+                                .foregroundStyle(.red)
+                        }
+                    }
+                    statusBadge
+                    Spacer()
                     if controller.state == .recording {
-                        WaveformView(level: controller.level, tint: .white, barCount: 7)
-                            .frame(width: 36, height: 20)
-                    } else {
-                        Image(systemName: controller.state == .transcribing ? "waveform" : "mic.fill")
-                            .font(.system(size: 28, weight: .medium))
-                            .foregroundStyle(.white)
+                        WaveformView(level: controller.level, tint: Theme.accent, barCount: 9, maxBarHeight: 18)
+                            .frame(width: 64, height: 18)
                     }
                 }
             }
-            .buttonStyle(.plain)
-            .disabled(controller.state == .transcribing || controller.state == .injecting)
-            .scaleEffect(reduceMotion ? 1 : (recordHovering ? 1.06 : 1))
-            .animation(reduceMotion ? nil : .spring(response: 0.25, dampingFraction: 0.65), value: recordHovering)
-            .onHover { h in recordHovering = h; if h { NSCursor.pointingHand.push() } else { NSCursor.pop() } }
-            .padding(.bottom, 10)
-
-            Text(LocalizedStringKey(recordLabel))
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(Theme.primaryText)
-            Text("Press \(hotkeyBadge) to dictate")
-                .font(.system(size: 12))
-                .foregroundStyle(Theme.secondaryText)
-                .padding(.top, 2)
-
-            if let outcome = controller.lastInjection, controller.state == .idle {
-                injectionStatus(outcome).padding(.top, 8)
+            if !controller.liveText.isEmpty {
+                Text(controller.liveText)
+                    .textSelection(.enabled)
+                    .font(.geist(size: 14))
+                    .foregroundStyle(Theme.primaryText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            // Post-dictation outcome — surfaces the clipboard-fallback hint when AX can't auto-insert.
+            if controller.state == .idle, let outcome = controller.lastInjection {
+                injectionStatus(outcome)
             }
         }
-        .padding(16)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Theme.cardBG, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .shadow(color: Theme.cardShadow, radius: 8, x: 0, y: 3)
-        .animation(reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 0.7), value: controller.state)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .wispCard(padding: 16)
+        .transition(.opacity.combined(with: .move(edge: .top)))
+    }
+
+    @ViewBuilder private func injectionStatus(_ outcome: InjectionOutcome) -> some View {
+        switch outcome {
+        case .inserted(let app):
+            Label(app.map { "Inserted into \($0)" } ?? "Inserted", systemImage: "checkmark.circle.fill")
+                .font(.geist(size: 12, weight: .medium)).foregroundStyle(.green)
+        case .copiedToClipboard:
+            Label("Copied — enable Accessibility to auto-insert", systemImage: "doc.on.clipboard")
+                .font(.geist(size: 12, weight: .medium)).foregroundStyle(.orange)
+        }
     }
 
     private var statusBadge: some View {
         let (text, color): (String, Color) = switch controller.state {
-        case .idle:               ("Ready", .green)
-        case .preparing:          ("Preparing…", Theme.accent)
-        case .recording:          (controller.isSpeaking ? "Listening…" : "Recording…", .red)
-        case .transcribing:       ("Transcribing…", Theme.accent)
-        case .injecting:          ("Inserting…", Theme.accent)
-        case .error(let m):       (m, .orange)
+        case .idle:         ("Ready", .green)
+        case .preparing:    ("Preparing…", Theme.accent)
+        case .recording:    (controller.isSpeaking ? "Listening…" : "Recording…", .red)
+        case .transcribing: ("Transcribing…", Theme.accent)
+        case .injecting:    ("Inserting…", Theme.accent)
+        case .error(let m): (m, .orange)
         }
         return Label(LocalizedStringKey(text), systemImage: "circle.fill")
-            .font(.system(size: 12, weight: .semibold))
+            .font(.geist(size: 12, weight: .semibold))
             .foregroundStyle(color)
             .contentTransition(.opacity)
     }
 
     private var currentMode: EnhancementStyle { EnhancementStyle(rawValue: enhancementStyle) ?? .auto }
 
-    private var modePill: some View {
-        Menu {
-            ForEach(EnhancementStyle.allCases) { style in
-                Toggle(LocalizedStringKey(style.name), isOn: Binding(
-                    get: { enhancementStyle == style.rawValue },
-                    set: { if $0 { enhancementStyle = style.rawValue } }))
+    // MARK: - Transcribe Files
+
+    private var filesCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Text("Transcribe Files")
+                    .font(.geist(size: 18, weight: .semibold))
+                    .foregroundStyle(Theme.primaryText)
+                Spacer()
+                GlassPillButton(title: "Add File", systemImage: "plus") { pickFiles() }
             }
-        } label: {
-            HStack(spacing: 4) {
-                Text(LocalizedStringKey(currentMode.name))
-                    .font(.system(size: 11, weight: .semibold))
+
+            // Dropzone
+            VStack(spacing: 8) {
+                Image(systemName: "icloud.and.arrow.up")
+                    .font(.geist(size: 26))
+                    .foregroundStyle(dropTargeted ? Theme.accent : Color(Fluid.clay300))
+                Text("Drag and drop audio files here")
+                    .font(.geist(size: 14, weight: .semibold))
+                    .foregroundStyle(Theme.primaryText)
+                Text("Supports .mp3, .wav, .m4a and more")
+                    .font(.geist(size: 12))
+                    .foregroundStyle(Theme.mutedText)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 30)
+            .background(dropTargeted ? Theme.accentSoft : Color.clear,
+                        in: RoundedRectangle(cornerRadius: Theme.Radius.sm, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: Theme.Radius.sm, style: .continuous)
+                    .strokeBorder(dropTargeted ? Theme.accent : Color(Fluid.clay300).opacity(0.7),
+                                  style: StrokeStyle(lineWidth: 1.5, dash: [6, 5]))
+            )
+            .scaleEffect(dropTargeted ? 1.01 : 1)
+            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: dropTargeted)
+            .onDrop(of: [.fileURL], isTargeted: $dropTargeted) { providers in
+                loadURLs(from: providers); return true
+            }
+
+            if !fileQueue.jobs.isEmpty {
+                VStack(spacing: 0) {
+                    ForEach(Array(fileQueue.jobs.enumerated()), id: \.element.id) { idx, job in
+                        if idx > 0 { Divider().overlay(Theme.hairline) }
+                        jobRow(job)
+                    }
+                }
+            }
+        }
+        .wispCard(padding: 20)
+        .animation(.default, value: fileQueue.jobs)
+    }
+
+    @ViewBuilder private func jobRow(_ job: TranscriptionJob) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text(job.url.lastPathComponent)
+                    .font(.geist(size: 13, weight: .medium))
+                    .lineLimit(1).foregroundStyle(Theme.primaryText)
+                Spacer()
+                jobBadge(job.state)
+            }
+            if case .done(let text) = job.state {
+                HStack(alignment: .top, spacing: 8) {
+                    Text(text)
+                        .font(.geist(size: 12))
+                        .foregroundStyle(Theme.secondaryText)
+                        .lineLimit(4)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Button {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(text, forType: .string)
+                    } label: {
+                        Image(systemName: "doc.on.doc").font(.geist(size: 11))
+                    }
+                    .buttonStyle(.plain).foregroundStyle(Theme.secondaryText).pointingCursor()
+                }
+            }
+            if case .failed(let error) = job.state {
+                Text(error).font(.geist(size: 11)).foregroundStyle(.red.opacity(0.85)).lineLimit(2)
+            }
+        }
+        .padding(.vertical, 10)
+        .transition(.move(edge: .top).combined(with: .opacity))
+    }
+
+    // MARK: - Recent (grouped by date)
+
+    private var recentSection: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text("Recent")
+                    .font(.geist(size: 18, weight: .semibold))
+                    .foregroundStyle(Theme.primaryText)
+                Spacer()
+                Button {
+                    NotificationCenter.default.post(name: .whispOpenHistory, object: nil)
+                } label: {
+                    HStack(spacing: 4) {
+                        Text("View all").font(.geist(size: 13, weight: .medium))
+                        Image(systemName: "arrow.right").font(.geist(size: 11, weight: .semibold))
+                    }
                     .foregroundStyle(Theme.accent)
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 8, weight: .semibold))
-                    .foregroundStyle(Theme.accent)
+                }
+                .buttonStyle(.plain).pointingCursor()
             }
-            .padding(.horizontal, 8).padding(.vertical, 4)
-            .background(Theme.accentSoft, in: Capsule())
-        }
-        .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().pointingCursor()
-    }
+            .padding(.bottom, 4)
 
-    private var recordLabel: String {
-        switch controller.state {
-        case .recording:    "Stop"
-        case .preparing:    "Preparing…"
-        case .transcribing: "Transcribing…"
-        case .injecting:    "Inserting…"
-        default:            "Start dictation"
-        }
-    }
-
-    private var recordIcon: String {
-        controller.state == .recording ? "stop.fill" : "mic.fill"
-    }
-
-    @ViewBuilder private func injectionStatus(_ outcome: InjectionOutcome) -> some View {
-        switch outcome {
-        case .inserted(let app):
-            Label { if let app { Text("Inserted into \(app)") } else { Text("Inserted") } }
-                icon: { Image(systemName: "checkmark.circle.fill") }
-                .foregroundStyle(.green).font(.caption)
-        case .copiedToClipboard:
-            Label("Copied — enable Accessibility to auto-insert", systemImage: "doc.on.clipboard")
-                .foregroundStyle(.orange).font(.caption)
-        }
-    }
-
-    // MARK: - Stats card (2x2 grid)
-
-    private var statsCard: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 0) {
-                StatCell(icon: "doc.text", value: totalWords.formatted(), label: "total words")
-                Divider().overlay(Theme.hairline)
-                StatCell(icon: "speedometer", value: "\(Int(summary.avgWPM))", label: "wpm")
+            if transcriptions.isEmpty {
+                Text("No transcriptions yet — press \(hotkeyInline) and start talking.")
+                    .font(.geist(size: 14))
+                    .foregroundStyle(Theme.secondaryText)
+                    .padding(.vertical, 8)
+            } else {
+                ForEach(groupedRecent, id: \.key) { group in
+                    DateOverline(text: group.label)
+                        .padding(.top, 10).padding(.bottom, 2)
+                    VStack(spacing: 0) {
+                        ForEach(Array(group.items.enumerated()), id: \.element.id) { idx, item in
+                            if idx > 0 { Divider().overlay(Theme.hairline) }
+                            RecentRow(date: item.createdAt, text: item.text)
+                        }
+                    }
+                }
             }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .animation(.default, value: transcriptions.count)
+    }
+
+    private struct RecentGroup { let key: Date; let label: String; let items: [Transcription] }
+
+    private var groupedRecent: [RecentGroup] {
+        let cal = Calendar.current
+        let recent = Array(transcriptions.prefix(12))
+        let grouped = Dictionary(grouping: recent) { cal.startOfDay(for: $0.createdAt) }
+        return grouped.keys.sorted(by: >).map { day in
+            RecentGroup(key: day, label: Self.overlineFormatter.string(from: day),
+                        items: (grouped[day] ?? []).sorted { $0.createdAt > $1.createdAt })
+        }
+    }
+
+    // MARK: - Right rail: stats + voice profile
+
+    private var statsPanel: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 12) {
+                StatFigure(value: totalWords.formatted(), unit: "total words", size: 30)
+                StatFigure(value: "\(Int(summary.avgWPM))", unit: "wpm", size: 22)
+                StatFigure(value: streakDays > 0 ? "\(streakDays)" : "0",
+                           unit: streakDays == 1 ? "day" : "days", size: 22)
+            }
+
             Divider().overlay(Theme.hairline)
-            HStack(spacing: 0) {
-                StatCell(icon: "flame", value: streakDays > 0 ? "\(streakDays)" : "—", label: "day streak")
-                Divider().overlay(Theme.hairline)
-                StatCell(icon: "chart.line.uptrend.xyaxis", value: todaySessions > 0 ? "\(todaySessions)" : "—",
-                         label: "sessions today")
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Your Voice Profile")
+                    .font(.geist(size: 13, weight: .semibold))
+                    .foregroundStyle(Theme.primaryText)
+                Text("Discover how you use your voice.")
+                    .font(.geist(size: 12))
+                    .foregroundStyle(Theme.mutedText)
+            }
+
+            VStack(alignment: .leading, spacing: 7) {
+                ProgressMeter(value: milestoneProgress)
+                Text("Unlocks in \(wordsToMilestone.formatted()) words")
+                    .font(.geistMono(size: 11))
+                    .foregroundStyle(Theme.mutedText)
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Theme.cardBG, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .shadow(color: Theme.cardShadow, radius: 8, x: 0, y: 3)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .wispCard(padding: 20)
     }
+
+    private var milestoneTarget: Int { ((totalWords / 2000) + 1) * 2000 }
+    private var wordsToMilestone: Int { max(0, milestoneTarget - totalWords) }
+    private var milestoneProgress: Double { Double(totalWords % 2000) / 2000.0 }
 
     private var streakDays: Int {
         let cal = Calendar.current
@@ -278,50 +475,33 @@ struct DashboardView: View {
     // MARK: - AI card
 
     private var aiCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            // Icon
-            ZStack {
-                Circle()
-                    .fill(Theme.accent.opacity(0.1))
-                    .frame(width: 40, height: 40)
-                Image(systemName: "cpu")
-                    .font(.system(size: 18))
-                    .foregroundStyle(Theme.accent)
-            }
-
-            // Title
-            VStack(alignment: .leading, spacing: 2) {
-                if let model = store.activeModel {
-                    HStack(spacing: 6) {
-                        Text("On-device AI").font(.system(size: 13, weight: .bold)).foregroundStyle(Theme.accent)
-                        Text("·").foregroundStyle(Theme.secondaryText)
-                        Text(model.displayName).font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.primaryText)
-                    }
-                    Text("Running locally and privately")
-                        .font(.system(size: 12)).foregroundStyle(Theme.secondaryText)
-                    Label("Active", systemImage: "circle.fill")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(.green)
-                        .padding(.top, 2)
-                } else {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 10) {
+                ZStack {
+                    Circle().fill(Theme.accentSoft).frame(width: 36, height: 36)
+                    Image(systemName: "cpu").font(.geist(size: 16)).foregroundStyle(Theme.accent)
+                }
+                VStack(alignment: .leading, spacing: 2) {
                     Text("On-device AI")
-                        .font(.system(size: 13, weight: .bold)).foregroundStyle(Theme.accent)
-                    Text("No model downloaded")
-                        .font(.system(size: 12)).foregroundStyle(Theme.secondaryText)
-                    Text("Go to Settings → AI to download a model")
-                        .font(.system(size: 11)).foregroundStyle(Theme.secondaryText)
-                        .padding(.top, 2)
+                        .font(.geist(size: 13, weight: .semibold))
+                        .foregroundStyle(Theme.primaryText)
+                    if let model = store.activeModel {
+                        Text(model.displayName)
+                            .font(.geist(size: 12)).foregroundStyle(Theme.secondaryText)
+                    } else {
+                        Text("No model downloaded")
+                            .font(.geist(size: 12)).foregroundStyle(Theme.mutedText)
+                    }
+                }
+                Spacer(minLength: 0)
+                if store.activeModel != nil {
+                    Circle().fill(.green).frame(width: 7, height: 7)
                 }
             }
 
             if store.activeModel != nil {
                 Divider().overlay(Theme.hairline)
-                // Language — tappable menu
-                HStack {
-                    Image(systemName: "character.book.closed")
-                        .font(.system(size: 12)).foregroundStyle(Theme.secondaryText).frame(width: 16)
-                    Text("Language").font(.system(size: 12)).foregroundStyle(Theme.secondaryText)
-                    Spacer()
+                menuRow(icon: "character.book.closed", label: "Language") {
                     Menu {
                         ForEach(DictationLanguage.all) { lang in
                             Toggle(lang.name, isOn: Binding(
@@ -329,23 +509,11 @@ struct DashboardView: View {
                                 set: { _ in dictationLanguages = DictationLanguage.toggle(lang.id, in: dictationLanguages) }))
                         }
                     } label: {
-                        HStack(spacing: 3) {
-                            Text(DictationLanguage.compactSummary(dictationLanguages))
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundStyle(Theme.primaryText)
-                            Image(systemName: "chevron.up.chevron.down")
-                                .font(.system(size: 8)).foregroundStyle(Theme.secondaryText)
-                        }
+                        menuLabel(DictationLanguage.compactSummary(dictationLanguages))
                     }
                     .menuStyle(.borderlessButton).fixedSize().pointingCursor()
                 }
-
-                // Mode — tappable menu
-                HStack {
-                    Image(systemName: "wand.and.stars")
-                        .font(.system(size: 12)).foregroundStyle(Theme.secondaryText).frame(width: 16)
-                    Text("Mode").font(.system(size: 12)).foregroundStyle(Theme.secondaryText)
-                    Spacer()
+                menuRow(icon: "wand.and.stars", label: "Mode") {
                     Menu {
                         ForEach(EnhancementStyle.allCases) { style in
                             Toggle(LocalizedStringKey(style.name), isOn: Binding(
@@ -353,155 +521,56 @@ struct DashboardView: View {
                                 set: { if $0 { enhancementStyle = style.rawValue } }))
                         }
                     } label: {
-                        HStack(spacing: 3) {
-                            Text(LocalizedStringKey(currentMode.name))
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundStyle(Theme.primaryText)
-                            Image(systemName: "chevron.up.chevron.down")
-                                .font(.system(size: 8)).foregroundStyle(Theme.secondaryText)
-                        }
+                        menuLabel(currentMode.name)
                     }
                     .menuStyle(.borderlessButton).fixedSize().pointingCursor()
                 }
-
-                AIInfoRow(icon: "lock.shield", label: "Privacy", value: "Local")
+                infoRow(icon: "lock.shield", label: "Privacy", value: "Local")
+            } else {
+                Text("Go to Settings → AI to download a model")
+                    .font(.geist(size: 11)).foregroundStyle(Theme.mutedText)
             }
 
-            // Download progress if any
             ForEach(OnDeviceModel.catalog) { model in
                 if case .downloading(let p) = store.states[model.id] ?? .notDownloaded {
                     VStack(alignment: .leading, spacing: 4) {
                         Divider().overlay(Theme.hairline)
                         Text("Downloading \(model.displayName)")
-                            .font(.system(size: 11)).foregroundStyle(Theme.secondaryText)
+                            .font(.geist(size: 11)).foregroundStyle(Theme.secondaryText)
                         ProgressView(value: p).progressViewStyle(.linear).tint(Theme.accent)
-                        Text("\(Int(p * 100))%").font(.system(size: 10)).foregroundStyle(Theme.secondaryText)
+                        Text("\(Int(p * 100))%").font(.geistMono(size: 10)).foregroundStyle(Theme.mutedText)
                     }
                 }
             }
-
-            Spacer(minLength: 0)
         }
-        .padding(16)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(Theme.cardBG, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .shadow(color: Theme.cardShadow, radius: 8, x: 0, y: 3)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .wispCard(padding: 20)
     }
 
-    // MARK: - Live text
-
-    private var liveTextView: some View {
-        Text(controller.liveText)
-            .textSelection(.enabled)
-            .font(.system(size: 14))
-            .foregroundStyle(Theme.primaryText)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .wispCard(padding: 14)
-            .transition(.opacity)
+    @ViewBuilder private func menuRow<Trailing: View>(icon: String, label: LocalizedStringKey,
+                                                      @ViewBuilder trailing: () -> Trailing) -> some View {
+        HStack {
+            Image(systemName: icon).font(.geist(size: 12)).foregroundStyle(Theme.secondaryText).frame(width: 16)
+            Text(label).font(.geist(size: 12)).foregroundStyle(Theme.secondaryText)
+            Spacer()
+            trailing()
+        }
     }
 
-    // MARK: - Recent
-
-    private var recentSection: some View {
-        VStack(spacing: 0) {
-            // Header
-            HStack {
-                Label("Recent", systemImage: "clock")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(Theme.primaryText)
-                Spacer()
-                Button {
-                    NotificationCenter.default.post(name: .whispOpenHistory, object: nil)
-                } label: {
-                    HStack(spacing: 4) {
-                        Text("View all history")
-                            .font(.system(size: 13))
-                            .foregroundStyle(Theme.accent)
-                        Image(systemName: "arrow.right")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(Theme.accent)
-                    }
-                }
-                .buttonStyle(.plain).pointingCursor()
-            }
-            .padding(.horizontal, 16).padding(.vertical, 14)
-
-            Divider().overlay(Theme.hairline)
-
-            if transcriptions.isEmpty {
-                Text("No transcriptions yet — press \(hotkeyBadge) and start talking.")
-                    .font(.callout).foregroundStyle(Theme.secondaryText)
-                    .padding(16)
-            } else {
-                ForEach(Array(transcriptions.prefix(6).enumerated()), id: \.element.id) { idx, item in
-                    if idx > 0 { Divider().overlay(Theme.hairline) }
-                    RecentRowNew(date: item.createdAt, text: item.text)
-                }
-            }
+    private func menuLabel(_ text: String) -> some View {
+        HStack(spacing: 3) {
+            Text(text).font(.geist(size: 12, weight: .medium)).foregroundStyle(Theme.primaryText)
+            Image(systemName: "chevron.up.chevron.down").font(.geist(size: 8)).foregroundStyle(Theme.secondaryText)
         }
-        .background(Theme.cardBG, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .shadow(color: Theme.cardShadow, radius: 8, x: 0, y: 3)
-        .animation(.default, value: transcriptions.count)
     }
 
-    // MARK: - Files
-
-    private var filesSection: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Label("Transcribe Files", systemImage: "doc.waveform")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(Theme.primaryText)
-                Spacer()
-                Button { pickFiles() } label: {
-                    Label("Add File", systemImage: "plus")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(Theme.accent)
-                }
-                .buttonStyle(.plain).pointingCursor()
-            }
-            .padding(.horizontal, 16).padding(.vertical, 14)
-
-            Divider().overlay(Theme.hairline)
-
-            // Drop zone
-            VStack(spacing: 8) {
-                Image(systemName: "icloud.and.arrow.up")
-                    .font(.system(size: 28))
-                    .foregroundStyle(dropTargeted ? Theme.accent : Theme.secondaryText.opacity(0.5))
-                Text("Drag and drop audio files here")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(Theme.primaryText)
-                Text("Supports .mp3, .wav, .m4a and more")
-                    .font(.system(size: 12))
-                    .foregroundStyle(Theme.secondaryText)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 28)
-            .background(dropTargeted ? Theme.accentSoft : .clear)
-            .scaleEffect(dropTargeted ? 1.01 : 1)
-            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: dropTargeted)
-            .onDrop(of: [.fileURL], isTargeted: $dropTargeted) { providers in
-                loadURLs(from: providers); return true
-            }
-
-            if !fileQueue.jobs.isEmpty {
-                Divider().overlay(Theme.hairline)
-                ForEach(fileQueue.jobs) { job in
-                    HStack {
-                        Text(job.url.lastPathComponent).lineLimit(1).foregroundStyle(Theme.primaryText)
-                        Spacer()
-                        jobBadge(job.state)
-                    }
-                    .font(.system(size: 12))
-                    .padding(.horizontal, 16).padding(.vertical, 10)
-                    .transition(.move(edge: .top).combined(with: .opacity))
-                }
-            }
+    private func infoRow(icon: String, label: LocalizedStringKey, value: LocalizedStringKey) -> some View {
+        HStack {
+            Image(systemName: icon).font(.geist(size: 12)).foregroundStyle(Theme.secondaryText).frame(width: 16)
+            Text(label).font(.geist(size: 12)).foregroundStyle(Theme.secondaryText)
+            Spacer()
+            Text(value).font(.geist(size: 12, weight: .medium)).foregroundStyle(Theme.primaryText)
         }
-        .background(Theme.cardBG, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .shadow(color: Theme.cardShadow, radius: 8, x: 0, y: 3)
-        .animation(.default, value: fileQueue.jobs)
     }
 
     // MARK: - Accessibility banner
@@ -510,9 +579,10 @@ struct DashboardView: View {
         HStack(spacing: 10) {
             Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
             VStack(alignment: .leading, spacing: 2) {
-                Text("Accessibility is off").font(.headline).foregroundStyle(Theme.primaryText)
+                Text("Accessibility is off")
+                    .font(.geist(size: 14, weight: .semibold)).foregroundStyle(Theme.primaryText)
                 Text("whisp can't insert text into other apps until you enable it.")
-                    .font(.caption).foregroundStyle(Theme.secondaryText)
+                    .font(.geist(size: 12)).foregroundStyle(Theme.secondaryText)
             }
             Spacer()
             Button("Open Settings") {
@@ -522,7 +592,8 @@ struct DashboardView: View {
             }.pointingCursor()
         }
         .padding(14)
-        .background(.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 14))
+        .background(.orange.opacity(0.10), in: RoundedRectangle(cornerRadius: Theme.Radius.md, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Theme.Radius.md, style: .continuous).stroke(.orange.opacity(0.25)))
     }
 
     // MARK: - Helpers
@@ -531,6 +602,12 @@ struct DashboardView: View {
         let total = max(0, Int(now.timeIntervalSince(start)))
         return String(format: "%d:%02d", total / 60, total % 60)
     }
+
+    private static let overlineFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "MMMM d, yyyy"
+        return f
+    }()
 
     private func pickFiles() {
         let panel = NSOpenPanel()
@@ -552,98 +629,57 @@ struct DashboardView: View {
 
     @ViewBuilder private func jobBadge(_ state: TranscriptionJob.State) -> some View {
         switch state {
-        case .queued:       Text("Queued").foregroundStyle(Theme.secondaryText)
-        case .running:      ProgressView().controlSize(.small)
-        case .done:         Text("Done").foregroundStyle(.green)
-        case .failed:       Text("Failed").foregroundStyle(.red)
+        case .queued:  Text("Queued").font(.geist(size: 11)).foregroundStyle(Theme.mutedText)
+        case .running: ProgressView().controlSize(.small)
+        case .done:    Label("Done", systemImage: "checkmark.circle.fill").font(.geist(size: 11)).foregroundStyle(.green)
+        case .failed:  Label("Failed", systemImage: "xmark.circle.fill").font(.geist(size: 11)).foregroundStyle(.red)
         }
     }
 }
 
 // MARK: - Sub-views
 
-private struct StatCell: View {
-    let icon: String
-    let value: String
-    let label: String
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Image(systemName: icon)
-                .font(.system(size: 16))
-                .foregroundStyle(Theme.accent)
-            Text(value)
-                .font(.system(size: 22, weight: .semibold))
-                .foregroundStyle(Theme.primaryText)
-                .contentTransition(.numericText())
-            Text(LocalizedStringKey(label))
-                .font(.system(size: 11))
-                .foregroundStyle(Theme.secondaryText)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(14)
+/// Slight press-scale for the hero card.
+private struct HeroButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.985 : 1)
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
     }
 }
 
-private struct AIInfoRow: View {
-    let icon: String
-    let label: String
-    let value: String
-    var body: some View {
-        HStack {
-            Image(systemName: icon)
-                .font(.system(size: 12))
-                .foregroundStyle(Theme.secondaryText)
-                .frame(width: 16)
-            Text(label)
-                .font(.system(size: 12))
-                .foregroundStyle(Theme.secondaryText)
-            Spacer()
-            Text(value)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(Theme.primaryText)
-        }
-    }
-}
-
-private struct RecentRowNew: View {
+private struct RecentRow: View {
     let date: Date
     let text: String
     @State private var hovering = false
 
     var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "text.quote")
-                .font(.system(size: 10))
-                .foregroundStyle(Theme.accent)
-                .frame(width: 18)
-
+        HStack(alignment: .top, spacing: 14) {
             Text(date, format: .dateTime.hour().minute())
-                .font(.system(size: 12))
-                .monospacedDigit()
-                .foregroundStyle(Theme.secondaryText)
-                .frame(width: 44, alignment: .leading)
+                .font(.geistMono(size: 12))
+                .foregroundStyle(Theme.mutedText)
+                .frame(width: 62, alignment: .leading)
 
             Text(text)
-                .font(.system(size: 13))
+                .font(.geist(size: 14))
                 .foregroundStyle(Theme.primaryText)
-                .lineLimit(1)
+                .lineLimit(2)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             if hovering {
                 Button { copy() } label: {
-                    Image(systemName: "doc.on.doc").font(.system(size: 11))
+                    Image(systemName: "doc.on.doc").font(.geist(size: 11))
                 }
                 .buttonStyle(.plain).foregroundStyle(Theme.secondaryText).pointingCursor()
                 .transition(.opacity)
             }
-
-            Image(systemName: "chevron.right")
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(Theme.secondaryText.opacity(0.5))
         }
-        .padding(.horizontal, 16).padding(.vertical, 12)
+        .padding(.vertical, 11)
+        .padding(.horizontal, 4)
         .contentShape(Rectangle())
-        .animation(.easeOut(duration: 0.15), value: hovering)
+        .background(hovering ? Theme.selection : .clear,
+                    in: RoundedRectangle(cornerRadius: Theme.Radius.xs, style: .continuous))
+        .animation(.easeOut(duration: 0.14), value: hovering)
         .onHover { hovering = $0 }
     }
 

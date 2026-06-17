@@ -13,10 +13,10 @@ struct OnboardingView: View {
             VStack(spacing: 28) {
                 Spacer()
                 Text("Welcome to whisp")
-                    .font(.system(size: 36, weight: .semibold, design: .rounded))
+                    .font(.geist(size: 36, weight: .semibold, design: .rounded))
                     .foregroundStyle(.white)
                 Text("Three permissions to dictate anywhere on your Mac.")
-                    .font(.title3)
+                    .font(.geist(size: 19, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.7))
 
                 VStack(spacing: 12) {
@@ -41,10 +41,10 @@ struct OnboardingView: View {
         HStack(spacing: 14) {
             Image(systemName: step.status == .granted ? "checkmark.circle.fill" : "circle")
                 .foregroundStyle(step.status == .granted ? Color.green : Color.white.opacity(0.5))
-                .font(.title3)
+                .font(.geist(size: 19, weight: .semibold))
             VStack(alignment: .leading, spacing: 2) {
-                Text(step.title).foregroundStyle(.white).font(.headline)
-                Text(step.detail).foregroundStyle(.white.opacity(0.6)).font(.caption)
+                Text(step.title).foregroundStyle(.white).font(.geist(size: 15, weight: .semibold))
+                Text(step.detail).foregroundStyle(.white.opacity(0.6)).font(.geist(size: 11))
             }
             Spacer()
             if step.status != .granted {
