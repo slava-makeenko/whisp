@@ -9,8 +9,8 @@ options:
 settings:
   base:
     SWIFT_VERSION: "6.0"
-    MARKETING_VERSION: "0.1.5"
-    CURRENT_PROJECT_VERSION: "105"
+    MARKETING_VERSION: "0.1.6"
+    CURRENT_PROJECT_VERSION: "106"
     DEVELOPMENT_TEAM: ""               # P5
 packages:
   Whisp:

@@ -131,7 +131,7 @@ struct NotchRecorderView: View {
                               level: controller?.level ?? 1)
             }
         }
-        .frame(width: 64, height: 18)
+        .frame(width: 64, height: 26)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
@@ -144,26 +144,31 @@ struct NotchRecorderView: View {
     }
 }
 
-/// Centered white spectrum bars. The bar shape is time-driven, but the amplitude tracks the live
-/// microphone RMS `level` — silence flattens the bars, speech makes them bounce.
+/// Centered white spectrum bars that grow up and down from the mid-line. A gentle baseline wave
+/// keeps the pill alive even in silence; the live microphone RMS `level` drives the bars toward
+/// the full pill height while speaking.
 struct EqualizerBars: View {
     var time: TimeInterval
     var level: Float = 1
     var barCount: Int = 12
 
     var body: some View {
-        let amplitude = min(CGFloat(level) * 4, 1)   // RMS is small — amplify and clamp to 0...1
+        // RMS is small — amplify and clamp so normal speech reaches the top of the range.
+        let speech = min(CGFloat(level) * 10, 1)
         GeometryReader { geo in
+            let h = geo.size.height
             HStack(alignment: .center, spacing: 2) {
                 ForEach(0..<barCount, id: \.self) { index in
-                    let base = sin(time * 6 + Double(index) * 0.8)
-                    let detail = sin(time * 13 + Double(index) * 1.7) * 0.4
-                    let phase = max(0, min(1, ((base + detail) / 1.4 + 1) / 2))
-                    let height = 3 + (geo.size.height - 3) * amplitude * (0.45 + 0.55 * CGFloat(phase))
+                    let base = sin(time * 7 + Double(index) * 0.8)
+                    let detail = sin(time * 15 + Double(index) * 1.7) * 0.4
+                    let phase = max(0, min(1, ((base + detail) / 1.4 + 1) / 2))   // 0...1
+                    let idle = 0.16 + 0.20 * phase            // livelier baseline wave in silence
+                    let live = 0.30 + 0.70 * phase            // full-height bounce while speaking
+                    let frac = idle + (live - idle) * speech  // blend by the live mic level
                     Capsule()
                         .fill(.white)
                         .frame(maxWidth: .infinity)
-                        .frame(height: max(3, height))
+                        .frame(height: max(3, h * frac))
                 }
             }
             .frame(maxHeight: .infinity)
