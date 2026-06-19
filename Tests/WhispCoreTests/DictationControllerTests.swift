@@ -50,6 +50,26 @@ import WhispPlatform
         }
     }
 
+    /// Drains the audio, then finishes the stream with an error — the mid-session failure path
+    /// that routes through `fail()` and lands the controller in `.error`.
+    struct ThrowingTranscriber: TranscriptionService {
+        let id = TranscriptionBackendID.whisper
+        func availability(for options: TranscriptionOptions) async -> BackendAvailability { .ready }
+        func prepare(_ options: TranscriptionOptions) async throws {}
+        func stream(_ audio: AudioStream, options: TranscriptionOptions)
+            -> AsyncThrowingStream<TranscriptionEvent, Error> {
+            AsyncThrowingStream { continuation in
+                Task {
+                    do { for try await _ in audio {} } catch {}
+                    continuation.finish(throwing: TranscriptionError.modelMissing)
+                }
+            }
+        }
+        func transcribeFile(_ url: URL, options: TranscriptionOptions) async throws -> TranscriptionResult {
+            throw TranscriptionError.modelMissing
+        }
+    }
+
     actor SpyInjector: TextInjector {
         private(set) var injected: [String] = []
         func inject(_ text: String, strategy: InjectionStrategy?) async throws -> InjectionOutcome {
@@ -105,6 +125,29 @@ import WhispPlatform
         }
         #expect(controller.state == .idle)        // never left idle
         #expect(await media.resumes == 1)         // media resumed after the failed start
+    }
+
+    /// Regression: a mid-session backend failure lands in `.error`, and `.error` must NOT brick the
+    /// hotkey — the next activate recovers and starts a new session instead of being a silent no-op.
+    @Test @MainActor func recoversFromErrorStateOnNextHotkey() async throws {
+        let controller = DictationController(
+            capturer: StubCapturer(chunks: [chunk(0.5)]),
+            router: TranscriptionRouter(backends: [ThrowingTranscriber()]),
+            injector: SpyInjector(),
+            media: SpyMedia(),
+            vad: EnergyVAD())
+
+        try await controller.startDictation()
+        #expect(controller.state == .recording)
+        await controller.stopDictation()          // drains → consumeTask throws → fail() → .error
+        guard case .error = controller.state else {
+            Issue.record("expected .error after a mid-session failure, got \(controller.state)")
+            return
+        }
+
+        await controller.handleHotkey(.activate)  // must recover, not no-op
+        #expect(controller.state == .recording)   // recovered from the dead-end
+        await controller.stopDictation()
     }
 
     @Test @MainActor func hotkeyActivateRecordsThenDeactivateInjects() async throws {

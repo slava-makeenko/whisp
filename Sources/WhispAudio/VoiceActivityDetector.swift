@@ -12,4 +12,10 @@ public enum VADDecision: Sendable, Equatable {
 /// Streaming + stateful → `mutating`; owned and driven within a single isolation domain.
 public protocol VoiceActivityDetector {
     mutating func process(_ chunk: AudioChunk) -> VADDecision
+    /// Clear any accumulated speech/silence state before a new session.
+    mutating func reset()
+}
+
+public extension VoiceActivityDetector {
+    mutating func reset() {}   // stateless detectors need no reset
 }

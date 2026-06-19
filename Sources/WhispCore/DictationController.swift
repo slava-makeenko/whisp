@@ -112,15 +112,22 @@ public final class DictationController {
         switch event {
         case .toggle:
             switch state {
-            case .idle:                   try? await startDictation()
             case .preparing, .recording:  await stopDictation()
-            default:                      break
+            default:                      await recoverAndStart()   // idle/error → (re)start; transcribing/injecting ignored
             }
         case .activate:
-            if state == .idle { try? await startDictation() }
+            await recoverAndStart()
         case .deactivate:
             if state == .recording || state == .preparing { await stopDictation() }
         }
+    }
+
+    /// Start dictation from `.idle`, first recovering from a prior `.error` so a failed session never
+    /// bricks the hotkey (nothing else transitions out of `.error`). No-op while transcribing/injecting.
+    private func recoverAndStart() async {
+        if case .error = state { state = .idle }
+        guard state == .idle else { return }
+        try? await startDictation()
     }
 
     public func startDictation() async throws {
@@ -137,6 +144,7 @@ public final class DictationController {
         var effectiveOptions = preferredOptions ?? options
         finalText = ""
         liveText = ""
+        vad.reset()   // clear stale speaking/silence state so leading-silence trimming works every session
         await media.pause()
         if effectiveOptions.vocabulary.isEmpty, let vocabularyProvider {
             effectiveOptions.vocabulary = await vocabularyProvider()   // prime the model with the user's terms
@@ -302,6 +310,7 @@ public final class DictationController {
     }
 
     private func fail(_ error: Error) async {
+        Log.general.error("dictation session failed: \(String(describing: error), privacy: .public)")
         await media.resume()
         forwardTask?.cancel()
         forwardTask = nil

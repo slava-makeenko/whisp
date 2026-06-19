@@ -25,4 +25,14 @@ import WhispAudio
         var vad = EnergyVAD(threshold: 0.1)
         #expect(vad.process(chunk(0.0)) == .silence)
     }
+
+    /// Regression: a session that ends mid-speech must not leak `speaking` into the next session,
+    /// or the next session's leading silence would be mis-classified as speech and never trimmed.
+    @Test func resetClearsSpeakingState() {
+        var vad = EnergyVAD(threshold: 0.1, hangoverChunks: 8)
+        #expect(vad.process(chunk(0.5)) == .speech)   // now speaking, no trailing silence to settle it
+        #expect(vad.process(chunk(0.0)) == .speech)   // hangover carries speaking forward
+        vad.reset()
+        #expect(vad.process(chunk(0.0)) == .silence)  // after reset, the first silent chunk is silence again
+    }
 }

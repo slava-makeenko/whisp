@@ -102,8 +102,13 @@ struct WhispApp: App {
                 if let key, !key.isEmpty, !prompt.isEmpty {
                     // Cloud LLM (API key configured)
                     let model = defaults.string(forKey: "enhancementModel") ?? ""
-                    result = (try? await URLSessionLLMEnhancer(apiKey: key)
-                        .enhance(result, prompt: prompt, provider: provider.llmProvider(model: model))) ?? result
+                    do {
+                        result = try await URLSessionLLMEnhancer(apiKey: key)
+                            .enhance(result, prompt: prompt, provider: provider.llmProvider(model: model))
+                    } catch {
+                        // Keep the raw (dictionary-applied) text, but make the failure diagnosable.
+                        Log.asr.error("Live cloud enhancement failed; using raw text: \(error.localizedDescription, privacy: .public)")
+                    }
                 } else if UserDefaults.standard.string(forKey: "localModelID") != nil {
                     // On-device model downloaded — LocalTextCleaner now; MLX inference plugged in here
                     result = LocalTextCleaner.clean(result)
@@ -123,8 +128,13 @@ struct WhispApp: App {
                 guard let key = (try? KeychainSecretStore().get(provider.secretKey)) ?? nil, !key.isEmpty else { return nil }
                 let model = defaults.string(forKey: "enhancementModel") ?? ""
                 let prompt = "You are a precise text editor. Apply the user's instruction to the text below and output ONLY the resulting text — no quotes, no commentary. Instruction: \(command)"
-                return try? await URLSessionLLMEnhancer(apiKey: key)
-                    .enhance(selection, prompt: prompt, provider: provider.llmProvider(model: model))
+                do {
+                    return try await URLSessionLLMEnhancer(apiKey: key)
+                        .enhance(selection, prompt: prompt, provider: provider.llmProvider(model: model))
+                } catch {
+                    Log.asr.error("Command-mode enhancement failed: \(error.localizedDescription, privacy: .public)")
+                    return nil
+                }
             },
             onCue: { [soundStart, soundStop] cue in
                 guard UserDefaults.standard.object(forKey: "playSoundCues") as? Bool ?? true else { return }
@@ -154,8 +164,12 @@ struct WhispApp: App {
                     let prompt = style == .custom ? (defaults.string(forKey: "enhancementPrompt") ?? "") : (style.prompt ?? "")
                     if let key, !key.isEmpty, !prompt.isEmpty {
                         let model = defaults.string(forKey: "enhancementModel") ?? ""
-                        result = (try? await URLSessionLLMEnhancer(apiKey: key)
-                            .enhance(result, prompt: prompt, provider: provider.llmProvider(model: model))) ?? result
+                        do {
+                            result = try await URLSessionLLMEnhancer(apiKey: key)
+                                .enhance(result, prompt: prompt, provider: provider.llmProvider(model: model))
+                        } catch {
+                            Log.asr.error("File-queue cloud enhancement failed; using raw text: \(error.localizedDescription, privacy: .public)")
+                        }
                     } else if style == .cleanUp || defaults.string(forKey: "localModelID") != nil {
                         result = LocalTextCleaner.clean(result)
                     }

@@ -27,4 +27,9 @@ public struct EnergyVAD: VoiceActivityDetector {
         }
         return speaking ? .speech : .silence
     }
+
+    public mutating func reset() {
+        silenceRun = 0
+        speaking = false
+    }
 }
