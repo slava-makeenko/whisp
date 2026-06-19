@@ -221,9 +221,15 @@ public final class DictationController {
             }
         }
 
-        let levels = capturer.levels
-        levelTask = Task { @MainActor [weak self] in
-            for await value in levels { self?.level = value }
+        // The capturer's levels stream lives for the capturer's lifetime and tolerates a single
+        // consumer only — cancelling the reader would terminate the stream for good, leaving every
+        // later session stuck at level 0. Start one persistent reader and keep it; it idles between
+        // recordings and resumes when the tap yields again.
+        if levelTask == nil {
+            let levels = capturer.levels
+            levelTask = Task { @MainActor [weak self] in
+                for await value in levels { self?.level = value }
+            }
         }
 
         // Keep the OS from throttling us while another app is focused (audio + notch animation).
@@ -288,8 +294,6 @@ public final class DictationController {
         await media.resume()
         forwardTask?.cancel()
         forwardTask = nil
-        levelTask?.cancel()
-        levelTask = nil
         endRecordingActivity()
         level = 0
         recordingStartedAt = nil
@@ -301,8 +305,6 @@ public final class DictationController {
         await media.resume()
         forwardTask?.cancel()
         forwardTask = nil
-        levelTask?.cancel()
-        levelTask = nil
         endRecordingActivity()
         level = 0
         recordingStartedAt = nil
