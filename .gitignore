@@ -19,6 +19,9 @@ App/Resources/Models/
 # Claude Code skills (local tooling, not part of the app)
 .github/skills/
 
+# CodeGraph index (local code-intelligence artifact, rebuilt per machine)
+.codegraph/
+
 # Internal working docs (kept local, not published)
 CLAUDE.md
 CONTEXT.md
