@@ -13,6 +13,9 @@ public struct AudioChunk: Sendable {
         self.hostTime = hostTime
     }
 
+    /// Duration of this chunk in seconds (0 when the sample rate is unknown).
+    public var duration: Double { sampleRate > 0 ? Double(samples.count) / sampleRate : 0 }
+
     /// Root-mean-square amplitude (0...~1), used for VAD and UI levels.
     public func rms() -> Float {
         guard !samples.isEmpty else { return 0 }

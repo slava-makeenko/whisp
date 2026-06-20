@@ -70,6 +70,18 @@ import WhispPlatform
         }
     }
 
+    /// A backend whose prepare() always throws — exercises fall-through to the next ready engine.
+    struct FailToPrepareTranscriber: TranscriptionService {
+        let id: TranscriptionBackendID
+        func availability(for options: TranscriptionOptions) async -> BackendAvailability { .ready }
+        func prepare(_ options: TranscriptionOptions) async throws { throw TranscriptionError.modelMissing }
+        func stream(_ audio: AudioStream, options: TranscriptionOptions)
+            -> AsyncThrowingStream<TranscriptionEvent, Error> { AsyncThrowingStream { $0.finish() } }
+        func transcribeFile(_ url: URL, options: TranscriptionOptions) async throws -> TranscriptionResult {
+            throw TranscriptionError.modelMissing
+        }
+    }
+
     actor SpyInjector: TextInjector {
         private(set) var injected: [String] = []
         func inject(_ text: String, strategy: InjectionStrategy?) async throws -> InjectionOutcome {
@@ -148,6 +160,36 @@ import WhispPlatform
         await controller.handleHotkey(.activate)  // must recover, not no-op
         #expect(controller.state == .recording)   // recovered from the dead-end
         await controller.stopDictation()
+    }
+
+    /// A backend whose prepare() fails must fall through to the next ready backend instead of
+    /// dead-ending the session.
+    @Test @MainActor func fallsThroughToNextBackendWhenPrepareFails() async throws {
+        let injector = SpyInjector()
+        let controller = DictationController(
+            capturer: StubCapturer(chunks: [chunk(0.5)]),
+            router: TranscriptionRouter(backends: [
+                FailToPrepareTranscriber(id: .fluidAudioParakeet),   // higher priority, prepare throws
+                StubTranscriber(text: "fell through"),               // .whisper, prepares fine
+            ]),
+            injector: injector,
+            media: SpyMedia(),
+            vad: EnergyVAD())
+
+        try await controller.startDictation()
+        #expect(controller.state == .recording)            // didn't dead-end — fell through
+        await controller.stopDictation()
+        #expect(await injector.injected == ["fell through"])
+    }
+
+    /// VAD pre-roll / hangover are a time budget, not a fixed chunk count (chunk size is hardware-
+    /// dependent), so the kept window is stable across devices.
+    @Test func vadTrimUsesTimeBudgetNotChunkCount() {
+        let chunks = (0..<10).map { _ in chunk(0.0) }   // 10 × 0.1 s (1600 samples @ 16 kHz)
+        #expect(DictationController.preRollIndex(before: 5, seconds: 0.25, in: chunks) == 2)   // ~0.3 s back
+        #expect(DictationController.postRollIndex(after: 5, seconds: 0.20, in: chunks) == 7)   // ~0.2 s forward
+        #expect(DictationController.preRollIndex(before: 1, seconds: 5.0, in: chunks) == 0)    // clamps at start
+        #expect(DictationController.postRollIndex(after: 8, seconds: 5.0, in: chunks) == 9)    // clamps at end
     }
 
     @Test @MainActor func hotkeyActivateRecordsThenDeactivateInjects() async throws {
@@ -240,6 +282,56 @@ import WhispPlatform
 
         await controller.stopDictation()
         #expect(controller.state == .idle)
+    }
+
+    /// Counts (idempotent) prepare() calls, mirroring the real backends' `guard handle == nil` lazy
+    /// load — used to verify warm-prepare loads the backend once and the session reuses it.
+    actor CountingPreparer: TranscriptionService {
+        nonisolated let id = TranscriptionBackendID.whisper
+        nonisolated let text: String
+        private(set) var prepareCount = 0
+        private var prepared = false
+        init(text: String) { self.text = text }
+        func availability(for options: TranscriptionOptions) async -> BackendAvailability { .ready }
+        func prepare(_ options: TranscriptionOptions) async throws {
+            if !prepared { prepared = true; prepareCount += 1 }
+        }
+        nonisolated func stream(_ audio: AudioStream, options: TranscriptionOptions)
+            -> AsyncThrowingStream<TranscriptionEvent, Error> {
+            AsyncThrowingStream { continuation in
+                Task {
+                    do {
+                        for try await _ in audio {}
+                        continuation.yield(.final(TranscriptionResult(text: self.text, segments: [], backend: self.id)))
+                        continuation.finish()
+                    } catch { continuation.finish(throwing: error) }
+                }
+            }
+        }
+        func transcribeFile(_ url: URL, options: TranscriptionOptions) async throws -> TranscriptionResult {
+            TranscriptionResult(text: text, segments: [], backend: id)
+        }
+    }
+
+    /// Warm-prepare loads the backend without starting a session, and the next dictation reuses the
+    /// warm handle instead of preparing again (no cold-start stall, no concurrent double prepare).
+    @Test @MainActor func prewarmLoadsBackendOnceAndSessionReusesIt() async throws {
+        let backend = CountingPreparer(text: "ok")
+        let injector = SpyInjector()
+        let controller = DictationController(
+            capturer: StubCapturer(chunks: [chunk(0.5)]),
+            router: TranscriptionRouter(backends: [backend]),
+            injector: injector,
+            media: SpyMedia(),
+            vad: EnergyVAD())
+
+        controller.prewarm()
+        #expect(controller.state == .idle)            // warming never starts a session
+
+        try await controller.startDictation()         // awaits the warm, then reuses the loaded handle
+        await controller.stopDictation()
+        #expect(await backend.prepareCount == 1)      // prepared once (during warm), not again on start
+        #expect(await injector.injected == ["ok"])
     }
 
     /// Records how many audio chunks reached the backend.

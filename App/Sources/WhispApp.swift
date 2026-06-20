@@ -23,6 +23,7 @@ struct WhispApp: App {
     @AppStorage("hotkeyModifiers") private var hotkeyModifiers = HotkeyModifiers.option.rawValue
     @AppStorage("hotkeyMode") private var hotkeyMode = HotkeyMode.toggle
     @AppStorage("trimSilence") private var trimSilence = true
+    @AppStorage("autoStopOnSilence") private var autoStopOnSilence = false
     @AppStorage("transcriptionEngine") private var transcriptionEngine = "auto"
     @AppStorage("commandModeEnabled") private var commandModeEnabled = false
     @AppStorage("appLanguage") private var appLanguage = "system"
@@ -225,11 +226,12 @@ struct WhispApp: App {
                 }
                 .onChange(of: dictationLanguages, initial: true) { _, _ in applyTranscriptionOptions() }
                 .onChange(of: trimSilence) { applyTranscriptionOptions() }
+                .onChange(of: autoStopOnSilence) { applyTranscriptionOptions() }
                 .onChange(of: transcriptionEngine) { applyTranscriptionOptions() }
                 .onChange(of: commandModeEnabled) { controller.commandModeEnabled = commandModeEnabled }
                 .onChange(of: hotkeyKeyCode) { applyHotkey() }
                 .onChange(of: hotkeyModifiers) { applyHotkey() }
-                .onChange(of: hotkeyMode) { applyHotkey() }
+                .onChange(of: hotkeyMode) { applyHotkey(); applyTranscriptionOptions() }   // re-evaluate auto-stop gating
         }
         .windowStyle(.hiddenTitleBar)
         .commands {
@@ -278,6 +280,11 @@ struct WhispApp: App {
             languages: langs,
             useVAD: trimSilence,
             preferredBackend: TranscriptionBackendID(rawValue: transcriptionEngine))   // "auto" → nil → best-available
+        // Hands-free auto-stop only makes sense for Toggle mode (push-to-talk ends on key release).
+        controller.autoStopOnSilence = autoStopOnSilence && hotkeyMode == .toggle
+        // Warm the resolved backend so the first dictation is instant. Runs on launch (this is
+        // called with initial: true) and re-warms whenever the engine/language changes.
+        controller.prewarm()
     }
 
     private func startContext() async {

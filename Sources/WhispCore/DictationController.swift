@@ -58,8 +58,10 @@ public final class DictationController {
     @ObservationIgnored private var forwardTask: Task<Void, Never>?
     @ObservationIgnored private var consumeTask: Task<Void, Never>?
     @ObservationIgnored private var levelTask: Task<Void, Never>?
+    @ObservationIgnored private var prewarmTask: Task<Void, Never>?
     @ObservationIgnored private var finalText = ""
     @ObservationIgnored private var sessionStart: Date?
+    @ObservationIgnored private var transcribeStartedAt: Date?   // decode-latency telemetry start (audio fully captured)
     /// Held during a session so App Nap / background throttling don't freeze capture and the notch
     /// animation while another app is focused (which is the normal dictation case).
     @ObservationIgnored private var recordingActivity: (any NSObjectProtocol)?
@@ -73,6 +75,8 @@ public final class DictationController {
     @ObservationIgnored private let onCue: (@MainActor (SoundCue) -> Void)?
     /// When true, dictating with text selected runs it as a voice command instead of inserting.
     @ObservationIgnored public var commandModeEnabled = false
+    /// Hands-free: end the session automatically on the first natural pause (wired for Toggle mode).
+    @ObservationIgnored public var autoStopOnSilence = false
     @ObservationIgnored private var sessionMode = SessionMode.dictation
     @ObservationIgnored private var commandSelection = ""
 
@@ -130,6 +134,28 @@ public final class DictationController {
         try? await startDictation()
     }
 
+    /// Pre-load the backend resolved from the current options so the first dictation doesn't stall on
+    /// a cold model load (WhisperKit pipe build, FluidAudio model load, whisper.cpp download). `prepare()`
+    /// is idempotent, so a later session reuses the warm handle. Call at launch and whenever the
+    /// engine/model changes. No-op while a session is active; queued warms run serially.
+    public func prewarm() {
+        guard state == .idle else { return }
+        let previous = prewarmTask
+        prewarmTask = Task { @MainActor [weak self] in
+            await previous?.value   // serialize: never run two prepare() calls concurrently
+            guard let self, self.state == .idle else { return }
+            let opts = self.preferredOptions ?? self.options
+            do {
+                let backend = try await self.router.select(for: opts)
+                guard self.state == .idle else { return }   // a session claimed the engine — it owns prepare
+                try await backend.prepare(opts)
+                self.selectedBackend = backend.id
+            } catch {
+                Log.asr.error("backend prewarm failed: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+    }
+
     public func startDictation() async throws {
         guard state == .idle else { return }
         state = .preparing   // claim synchronously; blocks re-entrant starts
@@ -150,13 +176,17 @@ public final class DictationController {
             effectiveOptions.vocabulary = await vocabularyProvider()   // prime the model with the user's terms
         }
 
-        // Select + load the backend (may download/load a model) BEFORE capturing,
-        // so the mic only opens once we're ready and a stop during prep is clean.
+        // Let any launch/settings prewarm finish so prepare() isn't invoked concurrently on a
+        // non-actor backend (whisper.cpp); the warm handle is then reused below.
+        await prewarmTask?.value
+
+        // Select + load a backend BEFORE capturing. Try the ready backends in order so a single
+        // engine's prepare failure (e.g. a model download 404) falls through to the next instead of
+        // dead-ending the session; the mic only opens once one is ready.
         let backend: any TranscriptionService
         do {
-            backend = try await router.select(for: effectiveOptions)
+            backend = try await prepareFirstAvailable(for: effectiveOptions)
             selectedBackend = backend.id
-            try await backend.prepare(effectiveOptions)
         } catch {
             await media.resume()
             state = .idle
@@ -189,7 +219,8 @@ public final class DictationController {
             var lastSpeech = 0
             do {
                 for try await chunk in raw {
-                    guard let decision = self?.decideVAD(chunk) else { break }
+                    guard let self else { break }
+                    let decision = self.decideVAD(chunk)
                     let index = all.count
                     all.append(chunk)
                     switch decision {
@@ -197,14 +228,18 @@ public final class DictationController {
                     case .endpoint: lastSpeech = index
                     case .silence:  break
                     }
+                    // Hands-free: end the session on the first natural pause (Toggle mode opt-in).
+                    if decision == .endpoint, self.autoStopOnSilence, self.state == .recording {
+                        Task { @MainActor in await self.stopDictation() }
+                    }
                 }
                 // Trim only the silence *around* the speech (everything between first and last speech
-                // is kept, with a pre-roll). If no speech was detected — or VAD is off — forward it all:
-                // never starve the engine, which rejects clips under ~0.3 s.
+                // is kept, with a time-based pre-roll / hangover). If no speech was detected — or VAD
+                // is off — forward it all: never starve the engine, which rejects clips under ~0.3 s.
                 let slice: ArraySlice<AudioChunk>
                 if gateVAD, let start = firstSpeech {
-                    let lo = max(0, start - 8)
-                    let hi = min(all.count - 1, lastSpeech + 4)
+                    let lo = Self.preRollIndex(before: start, seconds: 0.25, in: all)
+                    let hi = Self.postRollIndex(after: lastSpeech, seconds: 0.20, in: all)
                     slice = lo <= hi ? all[lo...hi] : all[...]
                 } else {
                     slice = all[...]
@@ -256,6 +291,7 @@ public final class DictationController {
             let pending = consumeTask
             try? await Task.sleep(for: .milliseconds(300))   // keep capturing the tail of the last word
             await capturer.stop()   // finishes the capture stream → drains the pipeline
+            transcribeStartedAt = .now   // audio fully captured → decode begins (latency telemetry)
             onCue?(.stop)           // "recording stopped" cue, after the mic is closed (no bleed)
             await pending?.value    // wait for transcription + injection to complete
         default:
@@ -273,6 +309,39 @@ public final class DictationController {
         return decision
     }
 
+    /// Prepares the first ready backend that loads successfully, falling through to the next on
+    /// failure. Throws the last error (or `.noBackendAvailable`) if none prepare.
+    private func prepareFirstAvailable(for options: TranscriptionOptions) async throws -> any TranscriptionService {
+        let candidates = await router.orderedReadyBackends(for: options)
+        guard !candidates.isEmpty else { throw TranscriptionError.noBackendAvailable }
+        var lastError: Error?
+        for candidate in candidates {
+            do {
+                try await candidate.prepare(options)
+                return candidate
+            } catch {
+                lastError = error
+                Log.asr.error("backend \(candidate.id.rawValue, privacy: .public) prepare failed; trying next: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+        throw lastError ?? TranscriptionError.noBackendAvailable
+    }
+
+    /// First chunk index ≈ `seconds` of audio before `idx` — a device-independent leading pre-roll
+    /// (chunk sizes vary with the hardware buffer, so a fixed chunk count would not be). Pure.
+    nonisolated static func preRollIndex(before idx: Int, seconds: Double, in chunks: [AudioChunk]) -> Int {
+        var acc = 0.0, i = idx
+        while i > 0 && acc < seconds { i -= 1; acc += chunks[i].duration }
+        return i
+    }
+
+    /// Last chunk index ≈ `seconds` of audio after `idx` — the trailing hangover. Pure.
+    nonisolated static func postRollIndex(after idx: Int, seconds: Double, in chunks: [AudioChunk]) -> Int {
+        var acc = 0.0, i = idx
+        while i < chunks.count - 1 && acc < seconds { i += 1; acc += chunks[i].duration }
+        return i
+    }
+
     private func handle(_ event: TranscriptionEvent) {
         switch event {
         case .partial(let text):     liveText = text
@@ -282,6 +351,9 @@ public final class DictationController {
     }
 
     private func finishTranscription() async {
+        if let t = transcribeStartedAt {
+            Log.asr.info("decode latency \(Int(Date.now.timeIntervalSince(t) * 1000))ms (backend \(self.selectedBackend?.rawValue ?? "?", privacy: .public))")
+        }
         state = .injecting
         if !finalText.isEmpty {
             switch sessionMode {

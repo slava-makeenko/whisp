@@ -34,6 +34,7 @@ struct SettingsView: View {
     @AppStorage("hotkeyModifiers") private var hotkeyModifiers = HotkeyModifiers.option.rawValue
     @AppStorage("hotkeyMode") private var hotkeyMode = HotkeyMode.toggle
     @AppStorage("trimSilence") private var trimSilence = true
+    @AppStorage("autoStopOnSilence") private var autoStopOnSilence = false
     @AppStorage("playSoundCues") private var playSoundCues = true
     @AppStorage("transcriptionEngine") private var transcriptionEngine = "auto"
     @State private var apiKey = ""
@@ -234,6 +235,10 @@ struct SettingsView: View {
             SettingsGroup {
                 SettingRow("Trim silence", description: "Sends only speech to the model, skipping pauses and noise.") {
                     Toggle("", isOn: $trimSilence).labelsHidden().toggleStyle(WisprToggleStyle())
+                }
+                RowDivider()
+                SettingRow("Stop on silence", description: "In Toggle mode, ends dictation automatically after a natural pause.") {
+                    Toggle("", isOn: $autoStopOnSilence).labelsHidden().toggleStyle(WisprToggleStyle())
                 }
                 RowDivider()
                 SettingRow("Sound on start / stop", description: "Plays a short cue when recording begins and ends.") {

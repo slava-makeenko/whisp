@@ -28,28 +28,30 @@ public actor TranscriptionRouter {
     }
 
     public func select(for options: TranscriptionOptions) async throws -> any TranscriptionService {
-        // 0. A ready per-request preferred engine (from the Settings picker) wins.
-        if let preferred = options.preferredBackend,
-           let svc = backends.first(where: { $0.id == preferred }),
-           await svc.availability(for: options) == .ready { return svc }
-
-        // 1. A ready user override always wins.
-        if let override = policy.userOverride,
-           let svc = backends.first(where: { $0.id == override }) {
-            if await svc.availability(for: options) == .ready { return svc }
+        guard let best = await orderedReadyBackends(for: options).first else {
+            throw TranscriptionError.noBackendAvailable
         }
+        return best
+    }
 
-        // 2. Otherwise, first ready backend in (possibly native-demoted) priority order.
-        let order: [TranscriptionBackendID] = policy.preferNativeOnMacOS26
+    /// The ready backends in selection order (best first), deduplicated. `select` returns the first;
+    /// callers wanting fall-through (try the next when `prepare()` fails) iterate the whole list.
+    public func orderedReadyBackends(for options: TranscriptionOptions) async -> [any TranscriptionService] {
+        // Build the candidate order first (no awaits): preferred → user override → priority order.
+        var candidateIDs: [TranscriptionBackendID] = []
+        if let preferred = options.preferredBackend { candidateIDs.append(preferred) }
+        if let override = policy.userOverride { candidateIDs.append(override) }
+        candidateIDs += policy.preferNativeOnMacOS26
             ? Self.priority
             : Self.priority.filter { $0 != .nativeSpeech } + [.nativeSpeech]
 
-        for id in order {
-            if let svc = backends.first(where: { $0.id == id }) {
-                if await svc.availability(for: options) == .ready { return svc }
-            }
+        // Then keep the ready ones, deduplicated, preserving order.
+        var ordered: [any TranscriptionService] = []
+        var seen = Set<TranscriptionBackendID>()
+        for id in candidateIDs {
+            guard seen.insert(id).inserted, let svc = backends.first(where: { $0.id == id }) else { continue }
+            if await svc.availability(for: options) == .ready { ordered.append(svc) }
         }
-
-        throw TranscriptionError.noBackendAvailable
+        return ordered
     }
 }
