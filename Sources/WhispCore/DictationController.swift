@@ -189,7 +189,10 @@ public final class DictationController {
             selectedBackend = backend.id
         } catch {
             await media.resume()
-            state = .idle
+            // Surface a readable reason (offline first-run model download is the common case) rather
+            // than silently dropping back to idle — recoverAndStart swallows the throw, so the .error
+            // state is what the user actually sees.
+            state = .error(Self.friendlyPrepareError(error))
             throw error
         }
         guard state == .preparing else { await media.resume(); return }   // stopped while preparing
@@ -325,6 +328,23 @@ public final class DictationController {
             }
         }
         throw lastError ?? TranscriptionError.noBackendAvailable
+    }
+
+    /// Maps a backend prepare/availability failure to a short, user-facing reason. The first-run
+    /// model download failing offline is the common case and gets an actionable message.
+    nonisolated static func friendlyPrepareError(_ error: Error) -> String {
+        if let te = error as? TranscriptionError {
+            switch te {
+            case .noBackendAvailable, .modelMissing:
+                return "No speech engine is ready. Open Settings → Dictation to choose one."
+            case .cancelled:
+                return "Dictation cancelled."
+            }
+        }
+        if (error as NSError).domain == NSURLErrorDomain {
+            return "Couldn't download the speech model — check your connection and try again."
+        }
+        return "Couldn't start the speech engine. Please try again."
     }
 
     /// First chunk index ≈ `seconds` of audio before `idx` — a device-independent leading pre-roll

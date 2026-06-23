@@ -41,7 +41,12 @@ public actor TranscriptionRouter {
         var candidateIDs: [TranscriptionBackendID] = []
         if let preferred = options.preferredBackend { candidateIDs.append(preferred) }
         if let override = policy.userOverride { candidateIDs.append(override) }
-        candidateIDs += policy.preferNativeOnMacOS26
+        // Native SpeechAnalyzer pins to a single locale, so for a genuine multi-language request
+        // (2+ selected) it would silently honour only the first. Demote it to last in that case so a
+        // multilingual-capable backend (Parakeet/Whisper auto-detect) wins — unless the user
+        // explicitly pinned an engine above (preferredBackend / userOverride), which still leads.
+        let multilingual = options.languages.count > 1
+        candidateIDs += (policy.preferNativeOnMacOS26 && !multilingual)
             ? Self.priority
             : Self.priority.filter { $0 != .nativeSpeech } + [.nativeSpeech]
 

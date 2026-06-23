@@ -57,6 +57,37 @@ import WhispAudio
         #expect(chosen.id == .whisper)
     }
 
+    @Test func demotesNativeForMultiLanguage() async throws {
+        // 2+ languages = multilingual auto-detect; native can only pin one locale, so a
+        // multilingual-capable backend must win even though native is otherwise "preferred".
+        let multi = TranscriptionOptions(languages: [Locale(identifier: "en_US"),
+                                                     Locale(identifier: "ru_RU")])
+        let router = TranscriptionRouter(
+            backends: [
+                StubBackend(id: .nativeSpeech, avail: .ready),
+                StubBackend(id: .fluidAudioParakeet, avail: .ready),
+                StubBackend(id: .whisper, avail: .ready),
+            ],
+            policy: .init(preferNativeOnMacOS26: true))
+        let chosen = try await router.select(for: multi)
+        #expect(chosen.id == .fluidAudioParakeet)
+    }
+
+    @Test func honorsExplicitNativeEvenForMultiLanguage() async throws {
+        // An explicit engine pin still wins over the multilingual demotion.
+        let multi = TranscriptionOptions(
+            languages: [Locale(identifier: "en_US"), Locale(identifier: "ru_RU")],
+            preferredBackend: .nativeSpeech)
+        let router = TranscriptionRouter(
+            backends: [
+                StubBackend(id: .nativeSpeech, avail: .ready),
+                StubBackend(id: .fluidAudioParakeet, avail: .ready),
+            ],
+            policy: .init(preferNativeOnMacOS26: true))
+        let chosen = try await router.select(for: multi)
+        #expect(chosen.id == .nativeSpeech)
+    }
+
     @Test func throwsWhenNothingReady() async {
         let router = TranscriptionRouter(
             backends: [StubBackend(id: .whisper, avail: .missingModel)],

@@ -8,6 +8,13 @@ import WhispPlatform
 
 @Suite struct DictationControllerTests {
 
+    @Test func friendlyPrepareErrorIsHumanReadable() {
+        let offline = NSError(domain: NSURLErrorDomain, code: NSURLErrorNotConnectedToInternet)
+        #expect(DictationController.friendlyPrepareError(offline).contains("connection"))
+        #expect(DictationController.friendlyPrepareError(TranscriptionError.noBackendAvailable)
+            .contains("Settings"))
+    }
+
     /// Emits preloaded chunks immediately; finishes the stream on `stop()`.
     actor StubCapturer: AudioCapturer {
         private let chunks: [AudioChunk]

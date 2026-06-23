@@ -58,6 +58,17 @@ import SwiftData
         #expect(abs(summary.timeSavedMinutes - 1.75) < 0.001)
     }
 
+    @Test func metricsSummaryWeightsWpmByDuration() {
+        // A 1-second, 5-word burst (300 wpm) must not dominate a steady 100-wpm minute.
+        let metrics = [
+            SessionMetric(wordsDictated: 100, keystrokesSaved: 0, activeSeconds: 60, wpm: 100),
+            SessionMetric(wordsDictated: 5, keystrokesSaved: 0, activeSeconds: 1, wpm: 300),
+        ]
+        let summary = MetricsSummary.from(metrics)
+        // Weighted: 105 words ÷ (61/60) min = 6300/61 ≈ 103.3 — not the unweighted mean of 200.
+        #expect(abs(summary.avgWPM - 6300.0 / 61.0) < 0.001)
+    }
+
     @Test func metricsStoreRecordAndSummary() async throws {
         let store = MetricsStore(modelContainer: try makeContainer())
         try await store.record(text: "one two three", durationMs: 60_000)

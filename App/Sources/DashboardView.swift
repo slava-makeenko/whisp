@@ -5,6 +5,7 @@ import ApplicationServices
 import WhispCore
 import WhispInput
 import WhispLLM
+import WhispPlatform
 
 struct DashboardView: View {
     @Environment(DictationController.self) private var controller
@@ -18,16 +19,18 @@ struct DashboardView: View {
     @AppStorage("enhancementStyle") private var enhancementStyle = "auto"
     @AppStorage("colorScheme") private var colorSchemeRaw = "system"
     @AppStorage("dictationLanguages") private var dictationLanguages = "en-US"
+    @AppStorage("enhancementProvider") private var enhancementProvider = "openai"
 
     @State private var dropTargeted = false
     @State private var recordHovering = false
     @State private var heroPulse = false
     @State private var axTrusted = AXIsProcessTrusted()
+    @State private var cloudKeyConfigured = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var summary: MetricsSummary { MetricsSummary.from(metrics) }
     private var totalWords: Int {
-        transcriptions.reduce(0) { $0 + $1.text.split { $0 == " " || $0 == "\n" }.count }
+        transcriptions.reduce(0) { $0 + $1.text.split(whereSeparator: \.isWhitespace).count }
     }
 
     var body: some View {
@@ -64,9 +67,10 @@ struct DashboardView: View {
         }
         .scrollContentBackground(.hidden)
         .background(Theme.windowBG)
-        .onAppear { heroPulse = true }
+        .onAppear { heroPulse = true; refreshCloudKey() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             axTrusted = AXIsProcessTrusted()
+            refreshCloudKey()
         }
         .animation(reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 0.8), value: controller.state)
     }
@@ -129,9 +133,14 @@ struct DashboardView: View {
 
     private var themeToggle: some View {
         Button {
-            colorSchemeRaw = colorSchemeRaw == "dark" ? "light" : "dark"
+            // Cycle through all three states so "follow system" stays reachable.
+            colorSchemeRaw = switch colorSchemeRaw {
+            case "light": "dark"
+            case "dark":  "system"
+            default:      "light"
+            }
         } label: {
-            Image(systemName: colorSchemeRaw == "dark" ? "sun.max" : "moon")
+            Image(systemName: themeIcon)
                 .font(.geist(size: 14))
                 .foregroundStyle(Theme.secondaryText)
                 .frame(width: 38, height: 38)
@@ -140,11 +149,35 @@ struct DashboardView: View {
                 .fdShadowSm()
         }
         .buttonStyle(.plain).pointingCursor()
-        .help("Toggle appearance")
+        .help(themeHelp)
+    }
+
+    private var themeIcon: String {
+        switch colorSchemeRaw {
+        case "light": "sun.max"
+        case "dark":  "moon"
+        default:      "circle.lefthalf.filled"   // follow system
+        }
+    }
+
+    private var themeHelp: LocalizedStringKey {
+        switch colorSchemeRaw {
+        case "light": "Appearance: Light (click for Dark)"
+        case "dark":  "Appearance: Dark (click for System)"
+        default:      "Appearance: System (click for Light)"
+        }
     }
 
     private var firstName: String {
         NSFullUserName().split(separator: " ").first.map(String.init) ?? "there"
+    }
+
+    /// Whether the active enhancement provider has an API key in the Keychain — drives the honest
+    /// "Mode needs a key" / "Privacy: Cloud" hints. Refreshed on appear and on app activation.
+    private func refreshCloudKey() {
+        let provider = EnhancementProvider(rawValue: enhancementProvider) ?? .openAI
+        let key = (try? KeychainSecretStore().get(provider.secretKey)) ?? nil
+        cloudKeyConfigured = !(key ?? "").isEmpty
     }
 
     /// Hotkey rendered as individual keycaps (modifiers then key).
@@ -157,7 +190,7 @@ struct DashboardView: View {
             if mods.contains(.command) { caps.append("⌘") }
             if mods.contains(.option)  { caps.append("⌥") }
             if mods.contains(.control) { caps.append("⌃") }
-            return caps.isEmpty ? ["fn"] : caps
+            return caps.isEmpty ? ["⌥", "Space"] : caps
         }
         if mods.contains(.control) { caps.append("⌃") }
         if mods.contains(.option)  { caps.append("⌥") }
@@ -300,7 +333,7 @@ struct DashboardView: View {
                 Text("Drag and drop audio files here")
                     .font(.geist(size: 14, weight: .semibold))
                     .foregroundStyle(Theme.primaryText)
-                Text("Supports .mp3, .wav, .m4a and more")
+                Text("Supports .mp3, .wav, .m4a and other audio")
                     .font(.geist(size: 12))
                     .foregroundStyle(Theme.mutedText)
             }
@@ -422,54 +455,80 @@ struct DashboardView: View {
         }
     }
 
-    // MARK: - Right rail: stats + voice profile
+    // MARK: - Right rail: stats
 
     private var statsPanel: some View {
         VStack(alignment: .leading, spacing: 16) {
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 14) {
                 StatFigure(value: totalWords.formatted(), unit: "total words", size: 30)
                 StatFigure(value: "\(Int(summary.avgWPM))", unit: "wpm", size: 22)
-                StatFigure(value: streakDays > 0 ? "\(streakDays)" : "0",
-                           unit: streakDays == 1 ? "day" : "days", size: 22)
-            }
-
-            Divider().overlay(Theme.hairline)
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Your Voice Profile")
-                    .font(.geist(size: 13, weight: .semibold))
-                    .foregroundStyle(Theme.primaryText)
-                Text("Discover how you use your voice.")
-                    .font(.geist(size: 12))
-                    .foregroundStyle(Theme.mutedText)
-            }
-
-            VStack(alignment: .leading, spacing: 7) {
-                ProgressMeter(value: milestoneProgress)
-                Text("Unlocks in \(wordsToMilestone.formatted()) words")
-                    .font(.geistMono(size: 11))
-                    .foregroundStyle(Theme.mutedText)
+                weekStreakRow
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .wispCard(padding: 20)
     }
 
-    private var milestoneTarget: Int { ((totalWords / 2000) + 1) * 2000 }
-    private var wordsToMilestone: Int { max(0, milestoneTarget - totalWords) }
-    private var milestoneProgress: Double { Double(totalWords % 2000) / 2000.0 }
+    // MARK: - Week streak
 
-    private var streakDays: Int {
+    private struct DayDot: Identifiable {
+        let id: Int
+        let label: String
+        let isUsed: Bool
+        let isToday: Bool
+        let isFuture: Bool
+    }
+
+    /// Mon→Sun dots for the current week: filled when dictated that day; today is
+    /// ringed-but-empty until it's used.
+    private var weekDots: [DayDot] {
         let cal = Calendar.current
-        let days = Set(transcriptions.map { cal.startOfDay(for: $0.createdAt) })
-        var streak = 0
-        var day = cal.startOfDay(for: Date())
-        while days.contains(day) {
-            streak += 1
-            guard let prev = cal.date(byAdding: .day, value: -1, to: day) else { break }
-            day = prev
+        let today = cal.startOfDay(for: Date())
+        let weekday = cal.component(.weekday, from: today)   // Sun=1 … Sat=7
+        let sinceMonday = (weekday + 5) % 7                  // Mon=0 … Sun=6
+        let monday = cal.date(byAdding: .day, value: -sinceMonday, to: today) ?? today
+        let used = Set(transcriptions.map { cal.startOfDay(for: $0.createdAt) })
+        let labels = ["M", "T", "W", "T", "F", "S", "S"]     // Monday-first
+        return (0..<7).map { i in
+            let day = cal.date(byAdding: .day, value: i, to: monday) ?? monday
+            return DayDot(id: i, label: labels[i],
+                          isUsed: used.contains(day),
+                          isToday: day == today,
+                          isFuture: day > today)
         }
-        return streak
+    }
+
+    private var weekStreakRow: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            Text("this week")
+                .font(.geist(size: 12))
+                .foregroundStyle(Theme.mutedText)
+            HStack(spacing: 0) {
+                ForEach(weekDots) { dot in
+                    VStack(spacing: 6) {
+                        ZStack {
+                            Circle()
+                                .fill(dot.isUsed ? Theme.accent : Color.clear)
+                                .overlay(
+                                    Circle().strokeBorder(
+                                        dot.isToday ? Theme.accent : Theme.hairlineStrong,
+                                        lineWidth: dot.isToday && !dot.isUsed ? 2 : 1))
+                                .frame(width: 22, height: 22)
+                            if dot.isUsed {
+                                Image(systemName: "checkmark")
+                                    .font(.geist(size: 9, weight: .bold))
+                                    .foregroundStyle(.white)
+                            }
+                        }
+                        .opacity(dot.isFuture ? 0.4 : 1)
+                        Text(dot.label)
+                            .font(.geistMono(size: 10, weight: dot.isToday ? .semibold : .regular))
+                            .foregroundStyle(dot.isToday ? Theme.primaryText : Theme.mutedText)
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+            }
+        }
     }
 
     // MARK: - AI card
@@ -486,7 +545,7 @@ struct DashboardView: View {
                         .font(.geist(size: 13, weight: .semibold))
                         .foregroundStyle(Theme.primaryText)
                     if let model = store.activeModel {
-                        Text(model.displayName)
+                        Text("\(model.displayName) · downloaded")
                             .font(.geist(size: 12)).foregroundStyle(Theme.secondaryText)
                     } else {
                         Text("No model downloaded")
@@ -495,7 +554,10 @@ struct DashboardView: View {
                 }
                 Spacer(minLength: 0)
                 if store.activeModel != nil {
-                    Circle().fill(.green).frame(width: 7, height: 7)
+                    // Amber, not green: the model is on disk but its LLM doesn't run inference yet —
+                    // dictation still goes through basic on-device cleanup.
+                    Circle().fill(.orange).frame(width: 7, height: 7)
+                        .help("Model downloaded. On-device LLM inference isn't wired up yet — dictation uses basic cleanup until it ships.")
                 }
             }
 
@@ -520,12 +582,18 @@ struct DashboardView: View {
                                 get: { enhancementStyle == style.rawValue },
                                 set: { if $0 { enhancementStyle = style.rawValue } }))
                         }
+                        if !cloudKeyConfigured {
+                            Divider()
+                            Text("Email, Message & Code need an API key (Settings → AI).")
+                        }
                     } label: {
-                        menuLabel(currentMode.name)
+                        menuLabel(currentMode.name,
+                                  warn: currentMode.needsCloudLLM && !cloudKeyConfigured)
                     }
                     .menuStyle(.borderlessButton).fixedSize().pointingCursor()
                 }
-                infoRow(icon: "lock.shield", label: "Privacy", value: "Local")
+                infoRow(icon: "lock.shield", label: "Privacy",
+                        value: cloudKeyConfigured ? "Cloud LLM" : "Local")
             } else {
                 Text("Go to Settings → AI to download a model")
                     .font(.geist(size: 11)).foregroundStyle(Theme.mutedText)
@@ -557,8 +625,12 @@ struct DashboardView: View {
         }
     }
 
-    private func menuLabel(_ text: String) -> some View {
+    private func menuLabel(_ text: String, warn: Bool = false) -> some View {
         HStack(spacing: 3) {
+            if warn {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.geist(size: 9)).foregroundStyle(.orange)
+            }
             Text(text).font(.geist(size: 12, weight: .medium)).foregroundStyle(Theme.primaryText)
             Image(systemName: "chevron.up.chevron.down").font(.geist(size: 8)).foregroundStyle(Theme.secondaryText)
         }

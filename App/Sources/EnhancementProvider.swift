@@ -77,6 +77,16 @@ enum EnhancementStyle: String, CaseIterable, Identifiable {
         }
     }
 
+    /// True for styles whose only implementation is the cloud-LLM prompt. Without an API key — and
+    /// with on-device inference not yet wired — they fall back to plain cleanup, so picking them
+    /// changes nothing. (`auto`/`cleanUp` always do *something* locally; `raw` is a no-op by design.)
+    var needsCloudLLM: Bool {
+        switch self {
+        case .email, .chat, .code, .custom: true
+        case .auto, .cleanUp, .raw: false
+        }
+    }
+
     /// LLM system prompt; `nil` for `raw`/`auto` (resolved elsewhere) and `custom` (user's own prompt).
     var prompt: String? {
         switch self {

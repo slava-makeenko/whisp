@@ -12,7 +12,10 @@ public struct MetricsSummary: Sendable, Equatable {
         let words = metrics.reduce(0) { $0 + $1.wordsDictated }
         let keystrokes = metrics.reduce(0) { $0 + $1.keystrokesSaved }
         let seconds = metrics.reduce(0) { $0 + $1.activeSeconds }
-        let avgWPM = metrics.isEmpty ? 0 : metrics.map(\.wpm).reduce(0, +) / Double(metrics.count)
+        // Aggregate WPM = total words ÷ total speaking time. Weighting by duration keeps one
+        // ultra-short session from dominating an unweighted mean of per-session rates.
+        let totalMinutes = Double(seconds) / 60.0
+        let avgWPM = totalMinutes > 0 ? Double(words) / totalMinutes : 0
         let saved = max(Double(words) / typingWPM - Double(seconds) / 60.0, 0)
         return MetricsSummary(timeSavedMinutes: saved, avgWPM: avgWPM, totalKeystrokes: keystrokes)
     }
