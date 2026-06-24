@@ -123,10 +123,7 @@ private struct ConferenceDetail: View {
                         Text("Transcribing…").font(.geist(size: 13)).foregroundStyle(Theme.secondaryText)
                     }
                 } else {
-                    Text(conference.transcript)
-                        .textSelection(.enabled)
-                        .font(.geist(size: 14)).foregroundStyle(Theme.primaryText)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    DiarizedTranscript(text: conference.transcript)
                 }
             }
             .padding(28)
@@ -136,6 +133,46 @@ private struct ConferenceDetail: View {
         .scrollContentBackground(.hidden)
         .background(Theme.windowBG)
         .id(conference.id)
+    }
+}
+
+/// Renders a speaker-labelled transcript ("Я: …" / "Собеседник: …") with the speaker styled, and any
+/// non-labelled lines (e.g. a permission hint) as plain secondary text.
+private struct DiarizedTranscript: View {
+    let text: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
+                if let turn = Self.parse(line) {
+                    (Text(turn.speaker + "  ")
+                        .font(.geist(size: 14, weight: .semibold))
+                        .foregroundStyle(turn.isMe ? Theme.accent : Theme.primaryText)
+                     + Text(turn.text)
+                        .font(.geist(size: 14))
+                        .foregroundStyle(Theme.primaryText))
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                    Text(line)
+                        .font(.geist(size: 13))
+                        .foregroundStyle(Theme.secondaryText)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var lines: [String] { text.split(separator: "\n").map(String.init) }
+
+    private static func parse(_ line: String) -> (speaker: String, text: String, isMe: Bool)? {
+        for (label, isMe) in [("Я", true), ("Собеседник", false)] {
+            let prefix = label + ": "
+            if line.hasPrefix(prefix) { return (label, String(line.dropFirst(prefix.count)), isMe) }
+        }
+        return nil
     }
 }
 

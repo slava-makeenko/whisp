@@ -20,7 +20,6 @@ final class ConferenceController {
 
     @ObservationIgnored var modelContainer: ModelContainer?
     @ObservationIgnored private let capturer = ConferenceCapturer()
-    @ObservationIgnored private var maxLevel: Float = 0
     @ObservationIgnored private var levelsTask: Task<Void, Never>?
     @ObservationIgnored private var activity: (any NSObjectProtocol)?
     @ObservationIgnored private var recordingID = UUID()
@@ -47,16 +46,11 @@ final class ConferenceController {
         recordingStartedAt = .now
         sourceApp = NSWorkspace.shared.frontmostApplication
         state = .recording
-        maxLevel = 0
         // Keep capture alive while another app is focused (App Nap would throttle the IO proc).
         activity = ProcessInfo.processInfo.beginActivity(
             options: [.userInitiated, .latencyCritical], reason: "whisp conference recording")
         levelsTask = Task { @MainActor [weak self, capturer] in
-            for await value in capturer.levels {
-                guard let self else { continue }
-                self.level = value
-                self.maxLevel = max(self.maxLevel, value)
-            }
+            for await value in capturer.levels { self?.level = value }
         }
     }
 
@@ -82,17 +76,22 @@ final class ConferenceController {
         try? container.mainContext.save()
 
         let url = (try? AppConstants.conferenceRecordingsDirectory())?.appendingPathComponent(fileName)
-        let capturedAudio = maxLevel > Self.silenceThreshold
+        let micSilent = capturer.maxMicLevel <= Self.silenceThreshold
+        let systemSilent = capturer.maxSystemLevel <= Self.silenceThreshold
         Task { @MainActor in
-            if !capturedAudio {
-                // The whole recording was silent — almost always a missing capture permission.
+            if micSilent && systemSilent {
+                // Nothing captured at all — almost always a missing capture permission.
                 conference.transcript = Self.noAudioHint
             } else if let url {
-                // Transcribe window-by-window so a long meeting shows progress and stays bounded.
+                // Diarized, window-by-window transcription (Я = mic, Собеседник = system audio).
                 for await partial in ConferenceTranscriber.stream(url) {
                     conference.transcript = partial
                     conference.wordCount = partial.split(whereSeparator: \.isWhitespace).count
                     try? container.mainContext.save()
+                }
+                // Mic worked but the system side stayed silent → the tap permission is the usual cause.
+                if systemSilent {
+                    conference.transcript = Self.noSystemAudioHint + "\n\n" + conference.transcript
                 }
             }
             try? container.mainContext.save()
@@ -100,11 +99,14 @@ final class ConferenceController {
         }
     }
 
-    /// Below this peak RMS the whole recording is treated as silent (no audio captured).
+    /// Below this peak RMS a source is treated as silent (no audio captured).
     private static let silenceThreshold: Float = 0.0008
     private static let noAudioHint =
         "⚠️ No audio was captured. Conference Mode needs Microphone and Audio Recording permission — "
         + "grant them in System Settings → Privacy & Security, then record again."
+    private static let noSystemAudioHint =
+        "⚠️ Only your microphone was captured — the system audio was silent. Grant Audio Recording "
+        + "permission (System Settings → Privacy & Security) so the other side is recorded too."
 
     private static let dateFormatter: DateFormatter = {
         let f = DateFormatter(); f.dateStyle = .medium; f.timeStyle = .short; return f

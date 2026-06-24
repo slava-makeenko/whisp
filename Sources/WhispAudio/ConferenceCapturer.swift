@@ -9,26 +9,38 @@ public enum ConferenceCaptureError: Error, Sendable {
     case deviceStartFailed(OSStatus)
 }
 
-/// Phase 1 core of Conference Mode. Captures the Mac's system-audio output (Core Audio process tap,
-/// macOS 14.4+) together with the built-in microphone inside one **private aggregate device**, mixes
-/// every input channel to mono, and records an AAC `.m4a`.
+/// Tracks the loudest level seen on each source during a recording — used after `stop()` to detect a
+/// missing capture permission (e.g. the system-audio side stayed silent the whole time). Mutated on
+/// the IO queue, read once the IOProc has stopped.
+private final class LevelTracker: @unchecked Sendable {
+    var maxMic: Float = 0
+    var maxSystem: Float = 0
+    func reset() { maxMic = 0; maxSystem = 0 }
+}
+
+/// Core of Conference Mode. Captures the Mac's system-audio output (Core Audio process tap,
+/// macOS 14.4+) together with the built-in microphone inside one **private aggregate device**, and
+/// records a **stereo** AAC `.m4a` — **mic on the left channel, system audio on the right**. Keeping
+/// the two sources on separate channels is what lets the transcriber attribute speech to "me" (mic)
+/// vs the remote side (system) with no ML at all — see `ConferenceTranscriber`.
 ///
-/// Putting the tap and the mic in the same aggregate device makes Core Audio the single master clock
-/// and drift-compensates the subdevices, so a long meeting stays in sync without manual host-time
-/// alignment. The meeting stays audible (the tap is unmuted).
+/// One aggregate device makes Core Audio the single master clock and drift-compensates the
+/// subdevices, so the two channels stay sample-aligned over a long meeting. The meeting stays
+/// audible (the tap is unmuted).
 ///
-/// `@unchecked Sendable`: the CoreAudio object ids are configured before `start(writingTo:)` returns
-/// and torn down in `stop()`; the IO block touches only the `Sendable` writer and levels continuation.
-/// `start`/`stop` are expected to be called from a single context (Phase 2's controller, on the main actor).
-///
-/// Process taps need macOS 14.2+; the app's deployment floor is 14.4, but the WhispAudio package
-/// baseline is lower, so the type is gated explicitly.
+/// `@unchecked Sendable`: CoreAudio ids are configured before `start` returns and torn down in
+/// `stop`; the IO block touches only Sendable values. `start`/`stop` run from one context (the main actor).
 @available(macOS 14.2, *)
 public final class ConferenceCapturer: @unchecked Sendable {
     private let levelsStream: AsyncStream<Float>
     private let levelsContinuation: AsyncStream<Float>.Continuation
-    /// RMS of the mixed audio, for the recording indicator.
+    /// RMS of the combined audio, for the recording indicator.
     public var levels: AsyncStream<Float> { levelsStream }
+
+    private let levelTracker = LevelTracker()
+    /// Peak level seen on each source this recording (valid after `stop()`), for permission hints.
+    public var maxMicLevel: Float { levelTracker.maxMic }
+    public var maxSystemLevel: Float { levelTracker.maxSystem }
 
     private var tapID = AudioObjectID(kAudioObjectUnknown)
     private var aggregateID = AudioObjectID(kAudioObjectUnknown)
@@ -42,9 +54,10 @@ public final class ConferenceCapturer: @unchecked Sendable {
         (levelsStream, levelsContinuation) = AsyncStream.makeStream(of: Float.self)
     }
 
-    /// Builds the tap + aggregate, opens the IOProc, and starts recording to `url` (AAC `.m4a`).
+    /// Builds the tap + aggregate, opens the IOProc, and starts recording to `url` (stereo AAC `.m4a`).
     public func start(writingTo url: URL) throws {
         guard !isRecording else { return }
+        levelTracker.reset()
 
         // 1. System-audio process tap over the whole global mix (excludes nothing).
         let tapDescription = CATapDescription(stereoGlobalTapButExcludeProcesses: [])
@@ -56,7 +69,12 @@ public final class ConferenceCapturer: @unchecked Sendable {
         tapID = tap
 
         // 2. Private aggregate device = built-in mic (clock master) + the tap (drift-compensated).
-        let micUID = Self.defaultInputUID()
+        //    The aggregate presents the subdevice's input channels FIRST, then the tap's — so the
+        //    first `micChannels` input channels are the mic and the rest are the system audio.
+        let micDevID = Self.defaultInputDeviceID()
+        let micUID = micDevID.flatMap { Self.deviceUID($0) }
+        let micChannels = micDevID.map { Self.inputChannelCount(of: $0) } ?? 0
+
         var description: [String: Any] = [
             kAudioAggregateDeviceNameKey: "Whisp Conference",
             kAudioAggregateDeviceUIDKey: UUID().uuidString,
@@ -79,16 +97,18 @@ public final class ConferenceCapturer: @unchecked Sendable {
         guard aggStatus == noErr else { cleanup(); throw ConferenceCaptureError.aggregateCreationFailed(aggStatus) }
         aggregateID = agg
 
-        // 3. Writer at the aggregate's nominal sample rate, mono.
+        // 3. Stereo writer (L = mic, R = system) at the aggregate's nominal sample rate.
         let sampleRate = Self.nominalSampleRate(of: agg) ?? 48_000
-        let writer = try ConferenceRecordingWriter(url: url, sampleRate: sampleRate, channels: 1)
+        let writer = try ConferenceRecordingWriter(url: url, sampleRate: sampleRate, channels: 2)
         self.writer = writer
 
-        // 4. IO block on a dedicated queue: mix all input channels → mono → writer + levels.
+        // 4. IO block: split input channels into mic (L) + system (R) → stereo writer + levels.
         let levelsCont = levelsContinuation
+        let tracker = levelTracker
         var proc: AudioDeviceIOProcID?
         let ioStatus = AudioDeviceCreateIOProcIDWithBlock(&proc, agg, ioQueue) { _, inInputData, _, _, _ in
-            Self.mixAndWrite(inInputData, writer: writer, levels: levelsCont)
+            Self.splitAndWrite(inInputData, micChannels: micChannels,
+                               writer: writer, levels: levelsCont, tracker: tracker)
         }
         guard ioStatus == noErr, let proc else { cleanup(); throw ConferenceCaptureError.ioProcCreationFailed(ioStatus) }
         ioProcID = proc
@@ -124,11 +144,15 @@ public final class ConferenceCapturer: @unchecked Sendable {
         }
     }
 
-    // MARK: - IO mixing (runs on `ioQueue`)
+    // MARK: - IO splitting (runs on `ioQueue`)
 
-    private static func mixAndWrite(_ inInputData: UnsafePointer<AudioBufferList>,
-                                    writer: ConferenceRecordingWriter,
-                                    levels: AsyncStream<Float>.Continuation) {
+    /// Splits the aggregate's input channels into mic (the first `micChannels` channels) and system
+    /// (the rest), downmixes each group to one channel, and writes a stereo frame (L = mic, R = system).
+    private static func splitAndWrite(_ inInputData: UnsafePointer<AudioBufferList>,
+                                      micChannels: Int,
+                                      writer: ConferenceRecordingWriter,
+                                      levels: AsyncStream<Float>.Continuation,
+                                      tracker: LevelTracker) {
         let abl = UnsafeMutableAudioBufferListPointer(UnsafeMutablePointer(mutating: inInputData))
         guard abl.count > 0 else { return }
 
@@ -139,37 +163,47 @@ public final class ConferenceCapturer: @unchecked Sendable {
         }
         guard frameCount > 0 else { return }
 
-        var mix = [Float](repeating: 0, count: frameCount)
-        var streams = 0
+        var mic = [Float](repeating: 0, count: frameCount)
+        var system = [Float](repeating: 0, count: frameCount)
+        var micCount = 0, systemCount = 0
+        var globalChannel = 0
         for buf in abl {
             guard let raw = buf.mData else { continue }
             let ch = max(1, Int(buf.mNumberChannels))
             let frames = Int(buf.mDataByteSize) / (MemoryLayout<Float>.size * ch)
             let samples = raw.assumingMemoryBound(to: Float.self)
             let lim = min(frames, frameCount)
-            for i in 0..<lim {
-                var s: Float = 0
-                for c in 0..<ch { s += samples[i * ch + c] }   // downmix this stream's channels
-                mix[i] += s / Float(ch)
+            for c in 0..<ch {
+                let isMic = (globalChannel + c) < micChannels
+                for i in 0..<lim {
+                    let v = samples[i * ch + c]
+                    if isMic { mic[i] += v } else { system[i] += v }
+                }
+                if isMic { micCount += 1 } else { systemCount += 1 }
             }
-            streams += 1
+            globalChannel += ch
         }
-        if streams > 1 {
-            let inv = 1 / Float(streams)
-            for i in 0..<frameCount { mix[i] *= inv }
-        }
+        if micCount > 1 { let inv = 1 / Float(micCount); for i in 0..<frameCount { mic[i] *= inv } }
+        if systemCount > 1 { let inv = 1 / Float(systemCount); for i in 0..<frameCount { system[i] *= inv } }
 
-        writer.append([mix], frames: frameCount)
+        writer.append([mic, system], frames: frameCount)
 
-        var sumSq: Float = 0
-        for v in mix { sumSq += v * v }
-        levels.yield((sumSq / Float(frameCount)).squareRoot())
+        let micRMS = rms(mic), systemRMS = rms(system)
+        if micRMS > tracker.maxMic { tracker.maxMic = micRMS }
+        if systemRMS > tracker.maxSystem { tracker.maxSystem = systemRMS }
+        levels.yield(max(micRMS, systemRMS))
+    }
+
+    private static func rms(_ samples: [Float]) -> Float {
+        guard !samples.isEmpty else { return 0 }
+        var sum: Float = 0
+        for v in samples { sum += v * v }
+        return (sum / Float(samples.count)).squareRoot()
     }
 
     // MARK: - CoreAudio helpers
 
-    /// UID of the current default input device (the mic), for the aggregate's subdevice list.
-    private static func defaultInputUID() -> String? {
+    private static func defaultInputDeviceID() -> AudioDeviceID? {
         var addr = AudioObjectPropertyAddress(
             mSelector: kAudioHardwarePropertyDefaultInputDevice,
             mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
@@ -177,16 +211,34 @@ public final class ConferenceCapturer: @unchecked Sendable {
         var size = UInt32(MemoryLayout<AudioDeviceID>.size)
         guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil, &size, &devID) == noErr,
               devID != 0 else { return nil }
+        return devID
+    }
 
-        var uidAddr = AudioObjectPropertyAddress(
+    private static func deviceUID(_ devID: AudioDeviceID) -> String? {
+        var addr = AudioObjectPropertyAddress(
             mSelector: kAudioDevicePropertyDeviceUID,
             mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
         var uid: CFString = "" as CFString
-        var uidSize = UInt32(MemoryLayout<CFString>.size)
+        var size = UInt32(MemoryLayout<CFString>.size)
         let status = withUnsafeMutablePointer(to: &uid) {
-            AudioObjectGetPropertyData(devID, &uidAddr, 0, nil, &uidSize, $0)
+            AudioObjectGetPropertyData(devID, &addr, 0, nil, &size, $0)
         }
         return status == noErr ? (uid as String) : nil
+    }
+
+    /// Number of input channels the device exposes (built-in mic is usually 1).
+    private static func inputChannelCount(of devID: AudioDeviceID) -> Int {
+        var addr = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyStreamConfiguration,
+            mScope: kAudioObjectPropertyScopeInput, mElement: kAudioObjectPropertyElementMain)
+        var size: UInt32 = 0
+        guard AudioObjectGetPropertyDataSize(devID, &addr, 0, nil, &size) == noErr, size > 0 else { return 0 }
+        let ptr = UnsafeMutableRawPointer.allocate(byteCount: Int(size),
+                                                   alignment: MemoryLayout<AudioBufferList>.alignment)
+        defer { ptr.deallocate() }
+        guard AudioObjectGetPropertyData(devID, &addr, 0, nil, &size, ptr) == noErr else { return 0 }
+        let abl = UnsafeMutableAudioBufferListPointer(ptr.assumingMemoryBound(to: AudioBufferList.self))
+        return abl.reduce(0) { $0 + Int($1.mNumberChannels) }
     }
 
     private static func nominalSampleRate(of device: AudioObjectID) -> Double? {
