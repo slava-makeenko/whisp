@@ -23,11 +23,6 @@ App/Resources/Models/
 .codegraph/
 
 # Internal working docs (kept local, not published)
+# Project context/design notes now live in the Obsidian vault (see AGENTS.md / CLAUDE.md §0).
 CLAUDE.md
-CONTEXT.md
-DESIGN.md
-VERIFY.md
-ARCHITECTURE.md
-ROADMAP.md
-BACKLOG.md
-CONFERENCE_MODE.md
+AGENTS.md

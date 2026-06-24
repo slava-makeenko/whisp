@@ -25,6 +25,8 @@
     <string>Fonts</string>
     <key>NSMicrophoneUsageDescription</key>
     <string>whisp transcribes your speech on-device.</string>
+    <key>NSAudioCaptureUsageDescription</key>
+    <string>whisp records system audio in Conference Mode to transcribe online meetings.</string>
     <key>NSSpeechRecognitionUsageDescription</key>
     <string>whisp uses on-device speech recognition to transcribe audio.</string>
     <key>NSAppleEventsUsageDescription</key>

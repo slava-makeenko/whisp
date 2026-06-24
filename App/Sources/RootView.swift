@@ -4,18 +4,20 @@ import WhispCore
 
 struct RootView: View {
     enum Section: String, CaseIterable, Identifiable {
-        case dashboard = "Home"
-        case history   = "History"
-        case powerMode = "Power Mode"
-        case settings  = "Settings"
+        case dashboard  = "Home"
+        case history    = "History"
+        case conference = "Conference"
+        case powerMode  = "Power Mode"
+        case settings   = "Settings"
 
         var id: String { rawValue }
         var symbol: String {
             switch self {
-            case .dashboard: "house"
-            case .history:   "clock"
-            case .powerMode: "bolt"
-            case .settings:  "gearshape"
+            case .dashboard:  "house"
+            case .history:    "clock"
+            case .conference: "person.2.wave.2"
+            case .powerMode:  "bolt"
+            case .settings:   "gearshape"
             }
         }
     }
@@ -92,7 +94,7 @@ struct RootView: View {
             }
             .padding(.horizontal, 10).padding(.top, 10).padding(.bottom, 16)
 
-            ForEach([Section.dashboard, .history, .powerMode]) { section in
+            ForEach([Section.dashboard, .history, .conference, .powerMode]) { section in
                 SidebarRow(title: section.rawValue, symbol: section.symbol,
                            selected: selection == section) { selection = section }
             }
@@ -121,10 +123,11 @@ struct RootView: View {
 
     @ViewBuilder private var detail: some View {
         switch selection {
-        case .dashboard: DashboardView()
-        case .history:   HistoryView()
-        case .powerMode: PowerModeView()
-        case .settings:  SettingsView()
+        case .dashboard:  DashboardView()
+        case .history:    HistoryView()
+        case .conference: ConferencesView()
+        case .powerMode:  PowerModeView()
+        case .settings:   SettingsView()
         }
     }
 }

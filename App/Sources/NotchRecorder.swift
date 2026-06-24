@@ -8,47 +8,71 @@ import WhispCore
 /// a dictation session is active. Floats above app windows, click-through, on every Space.
 @MainActor
 final class NotchRecorderController {
+    private enum Mode: Equatable { case hidden, dictation, conference }
+
     private var panel: NSPanel?
     private weak var observed: DictationController?
-    private var observing = false
+    private weak var conference: ConferenceController?
+    private var trackingGeneration = 0
+    private var hostedMode: Mode = .hidden
 
-    /// Drive the indicator straight off the controller's state via Observation — independent of any
+    /// Drive the indicator straight off the controllers' state via Observation — independent of any
     /// window, so the pill keeps showing/animating even when whisp runs with its window closed.
     func observe(_ controller: DictationController) {
-        guard !observing else { return }
-        observing = true
         observed = controller
-        update(for: controller.state)
+        refresh()
         armTracking()
     }
 
+    /// Conference Mode shares the pill; dictation takes priority if both are active at once.
+    func observe(conference controller: ConferenceController) {
+        conference = controller
+        refresh()
+        armTracking()
+    }
+
+    /// Re-arms one-shot Observation tracking on **both** controllers' state. The generation token
+    /// makes stale registrations (armed before the second controller was attached) no-op instead of
+    /// compounding — so a state change on *either* controller wakes the indicator. Without the
+    /// re-arm, the conference controller (attached after dictation) was never tracked.
     private func armTracking() {
-        guard let observed else { return }
+        trackingGeneration += 1
+        let generation = trackingGeneration
         withObservationTracking {
-            _ = observed.state
+            _ = observed?.state
+            _ = conference?.state
         } onChange: { [weak self] in
             Task { @MainActor in
-                guard let self, let controller = self.observed else { return }
-                self.update(for: controller.state)
+                guard let self, generation == self.trackingGeneration else { return }
+                self.refresh()
                 self.armTracking()
             }
         }
     }
 
-    func update(for state: DictationController.State) {
-        switch state {
-        case .preparing, .recording, .transcribing, .injecting:
-            show()
-        case .idle, .error:
-            hide()
+    private func desiredMode() -> Mode {
+        if let state = observed?.state {
+            switch state {
+            case .preparing, .recording, .transcribing, .injecting: return .dictation
+            case .idle, .error: break
+            }
         }
+        if conference?.state == .recording {
+            return .conference
+        }
+        return .hidden
+    }
+
+    private func refresh() {
+        let mode = desiredMode()
+        mode == .hidden ? hide() : show(mode)
     }
 
     // Fixed pill dimensions — must match the frame modifiers in NotchRecorderView.
     private let pillW: CGFloat = 96
     private let pillH: CGFloat = 36
 
-    private func show() {
+    private func show(_ mode: Mode) {
         if panel == nil {
             let panel = NSPanel(
                 contentRect: NSRect(x: 0, y: 0, width: pillW, height: pillH),
@@ -66,13 +90,11 @@ final class NotchRecorderController {
             self.panel = panel
         }
         guard let panel else { return }
-        // The hosting view is torn down on hide (stopping its render ticker) — rebuild it here.
-        if panel.contentViewController == nil {
-            let hc = NSHostingController(rootView: NotchRecorderView(controller: observed))
-            // Lock the hosting controller to our pill size so it never causes the panel
-            // to resize before SwiftUI has laid out (which would break the first-show position).
-            hc.view.setFrameSize(NSSize(width: pillW, height: pillH))
-            panel.contentViewController = hc
+        // The hosting view is torn down on hide (stopping its render ticker) — rebuild it here, and
+        // swap it when the active mode (dictation ↔ conference) changes.
+        if panel.contentViewController == nil || hostedMode != mode {
+            panel.contentViewController = makeHost(for: mode)
+            hostedMode = mode
         }
         // Position using known constants — panel.frame.size is unreliable before first layout.
         position(panel)
@@ -86,18 +108,30 @@ final class NotchRecorderController {
         DispatchQueue.main.async { self.position(panel) }
     }
 
+    private func makeHost(for mode: Mode) -> NSHostingController<AnyView> {
+        let root: AnyView = mode == .conference
+            ? AnyView(NotchConferenceView(controller: conference))
+            : AnyView(NotchRecorderView(controller: observed))
+        let hc = NSHostingController(rootView: root)
+        // Lock the hosting controller to our pill size so it never resizes the panel before SwiftUI
+        // has laid out (which would break the first-show position).
+        hc.view.setFrameSize(NSSize(width: pillW, height: pillH))
+        return hc
+    }
+
     private func hide() {
         guard let panel, panel.isVisible else { return }
         NSAnimationContext.runAnimationGroup({ ctx in
             ctx.duration = 0.14
             ctx.timingFunction = CAMediaTimingFunction(name: .easeIn)
             panel.animator().alphaValue = 0
-        }, completionHandler: {
+        }, completionHandler: { [weak self] in
             // A new show() may have started mid-fade — only tear down if we stayed hidden.
             guard panel.alphaValue == 0 else { return }
             panel.orderOut(nil)
             // Release the hosting view so its 25fps ticker stops while the pill is hidden.
             panel.contentViewController = nil
+            self?.hostedMode = .hidden
         })
     }
 
@@ -173,5 +207,43 @@ struct EqualizerBars: View {
             }
             .frame(maxHeight: .infinity)
         }
+    }
+}
+
+/// Conference Mode pill — the same equalizer look as the dictation pill, with a leading meeting icon
+/// so the two are distinguishable at a glance. Driven by the conference mic + system-audio mix level.
+struct NotchConferenceView: View {
+    let controller: ConferenceController?
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var now = Date()
+    private let ticker = Timer.publish(every: 0.04, on: .main, in: .common).autoconnect()
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Image(systemName: "person.2.fill")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.white)
+            Group {
+                if reduceMotion {
+                    Image(systemName: "mic.fill")
+                        .font(.geist(size: 13, weight: .semibold))
+                        .foregroundStyle(.white)
+                } else {
+                    EqualizerBars(time: now.timeIntervalSinceReferenceDate,
+                                  level: controller?.level ?? 1)
+                }
+            }
+            .frame(width: 48, height: 26)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(.black)
+                .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(.white.opacity(0.12), lineWidth: 1))
+        )
+        .padding(2)
+        .onReceive(ticker) { if !reduceMotion { now = $0 } }
     }
 }

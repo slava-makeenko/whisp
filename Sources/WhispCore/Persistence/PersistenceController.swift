@@ -31,6 +31,12 @@ public enum PersistenceController {
             url: dir.appendingPathComponent("metrics.store"),
             cloudKitDatabase: .none)
 
+        let conferenceConfig = ModelConfiguration(
+            "conferences",
+            schema: Schema([Conference.self]),
+            url: dir.appendingPathComponent("conferences.store"),
+            cloudKitDatabase: .none)
+
         // CloudKit only when explicitly enabled AND the iCloud entitlement is actually present —
         // CloudKit setup crashes (not throws) on its own queue otherwise, so this can't be try/catch.
         let useCloudKit = !localBuild && Self.hasICloudEntitlement()
@@ -41,8 +47,8 @@ public enum PersistenceController {
             cloudKitDatabase: useCloudKit ? .private(AppConstants.cloudKitContainerIdentifier) : .none)
 
         return try ModelContainer(
-            for: Transcription.self, SessionMetric.self, DictionaryEntry.self,
-            configurations: historyConfig, metricsConfig, dictionaryConfig)
+            for: Transcription.self, SessionMetric.self, DictionaryEntry.self, Conference.self,
+            configurations: historyConfig, metricsConfig, dictionaryConfig, conferenceConfig)
     }
 
     /// True only when the process carries a `com.apple.developer.icloud-services` entitlement

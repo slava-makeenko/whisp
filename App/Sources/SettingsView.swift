@@ -33,6 +33,8 @@ struct SettingsView: View {
     @AppStorage("hotkeyKeyCode") private var hotkeyKeyCode = 49
     @AppStorage("hotkeyModifiers") private var hotkeyModifiers = HotkeyModifiers.option.rawValue
     @AppStorage("hotkeyMode") private var hotkeyMode = HotkeyMode.toggle
+    @AppStorage("conferenceHotkeyKeyCode") private var conferenceHotkeyKeyCode = 49
+    @AppStorage("conferenceHotkeyModifiers") private var conferenceHotkeyModifiers = HotkeyModifiers([.control, .option]).rawValue
     @AppStorage("trimSilence") private var trimSilence = true
     @AppStorage("autoStopOnSilence") private var autoStopOnSilence = false
     @AppStorage("playSoundCues") private var playSoundCues = true
@@ -217,6 +219,10 @@ struct SettingsView: View {
                     SettingRow("Shortcut", description: "Or tap a single modifier (🌐 ⌃ ⌥ ⌘).") {
                         ShortcutField(keyCode: $hotkeyKeyCode, modifiers: $hotkeyModifiers)
                     }
+                }
+                RowDivider()
+                SettingRow("Conference hotkey", description: "Start/stop recording a meeting (mic + system audio).") {
+                    ShortcutField(keyCode: $conferenceHotkeyKeyCode, modifiers: $conferenceHotkeyModifiers)
                 }
                 RowDivider()
                 SettingRow("Engine", description: "On-device speech-recognition model.") {

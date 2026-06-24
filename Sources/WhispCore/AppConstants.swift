@@ -15,4 +15,12 @@ public enum AppConstants: Sendable {
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
     }
+
+    /// `~/Library/Application Support/Whisp/ConferenceRecordings`, created on demand. Holds the
+    /// `.m4a` files recorded by Conference Mode.
+    public static func conferenceRecordingsDirectory() throws -> URL {
+        let dir = try applicationSupportDirectory().appendingPathComponent("ConferenceRecordings", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }
 }

@@ -14,12 +14,16 @@ public final class CarbonHotkeyMonitor: HotkeyMonitor, @unchecked Sendable {
     private var hotKeyRef: EventHotKeyRef?
     private var handlerRef: EventHandlerRef?
     private var mode: HotkeyMode = .toggle
+    private let hotKeyID: UInt32
 
     private let holdThreshold: TimeInterval = 0.25
     private var holdWorkItem: DispatchWorkItem?
     private var didActivateHold = false
 
-    public init() {
+    /// `id` distinguishes concurrently-registered hotkeys (e.g. dictation vs Conference Mode); each
+    /// instance must use a unique id under the shared `'VINK'` signature.
+    public init(id: UInt32 = 1) {
+        self.hotKeyID = id
         (events, continuation) = AsyncStream.makeStream(of: HotkeyEvent.self)
     }
 
@@ -43,9 +47,9 @@ public final class CarbonHotkeyMonitor: HotkeyMonitor, @unchecked Sendable {
         InstallEventHandler(GetApplicationEventTarget(), callback, eventTypes.count, &eventTypes,
                             Unmanaged.passUnretained(self).toOpaque(), &handlerRef)
 
-        let hotKeyID = EventHotKeyID(signature: OSType(0x56_49_4E_4B), id: 1)   // 'VINK'
+        let eventHotKeyID = EventHotKeyID(signature: OSType(0x56_49_4E_4B), id: hotKeyID)   // 'VINK'
         let status = RegisterEventHotKey(UInt32(keyCode), Self.carbonModifiers(binding.modifiers),
-                                         hotKeyID, GetApplicationEventTarget(), 0, &hotKeyRef)
+                                         eventHotKeyID, GetApplicationEventTarget(), 0, &hotKeyRef)
         guard status == noErr else { throw HotkeyError.tapCreationFailed }
     }
 

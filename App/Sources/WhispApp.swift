@@ -14,6 +14,7 @@ struct WhispApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var controller: DictationController
     @State private var fileQueueModel: FileQueueModel
+    @State private var conferenceController: ConferenceController
     @State private var modelStore = LocalModelStore()
     @State private var onboarding = OnboardingModel(permissions: SystemPermissions())
     @StateObject private var updaterController = UpdaterController()
@@ -22,6 +23,8 @@ struct WhispApp: App {
     @AppStorage("hotkeyKeyCode") private var hotkeyKeyCode = 49
     @AppStorage("hotkeyModifiers") private var hotkeyModifiers = HotkeyModifiers.option.rawValue
     @AppStorage("hotkeyMode") private var hotkeyMode = HotkeyMode.toggle
+    @AppStorage("conferenceHotkeyKeyCode") private var conferenceHotkeyKeyCode = 49
+    @AppStorage("conferenceHotkeyModifiers") private var conferenceHotkeyModifiers = HotkeyModifiers([.control, .option]).rawValue
     @AppStorage("trimSilence") private var trimSilence = true
     @AppStorage("autoStopOnSilence") private var autoStopOnSilence = false
     @AppStorage("transcriptionEngine") private var transcriptionEngine = "auto"
@@ -36,6 +39,8 @@ struct WhispApp: App {
     private let container: ModelContainer
     private let hotkeys = CarbonHotkeyMonitor()
     private let modifierMonitor = ModifierTapMonitor()
+    private let conferenceHotkeys = CarbonHotkeyMonitor(id: 2)
+    private let conferenceModifierMonitor = ModifierTapMonitor()
     private let notchRecorder = NotchRecorderController()
     private let contextProvider = WorkspaceContextProvider()
     // Held as properties so they stay alive during async playback.
@@ -186,9 +191,15 @@ struct WhispApp: App {
             }
         }
 
-        // Drive the notch indicator off the controller directly (not a window's .onChange), so it
+        // Conference Mode: its own controller, sharing the data store and the notch indicator.
+        let conferenceController = ConferenceController()
+        conferenceController.modelContainer = container
+        _conferenceController = State(initialValue: conferenceController)
+
+        // Drive the notch indicator off the controllers directly (not a window's .onChange), so it
         // works even when whisp runs in the background with its window closed.
         notchRecorder.observe(controller)
+        notchRecorder.observe(conference: conferenceController)
         controller.commandModeEnabled = UserDefaults.standard.bool(forKey: "commandModeEnabled")
     }
 
@@ -210,6 +221,7 @@ struct WhispApp: App {
             RootView()
                 .environmentObject(updaterController)
                 .environment(controller)
+                .environment(conferenceController)
                 .environment(fileQueueModel)
                 .environment(modelStore)
                 .environment(\.locale, appLocale)
@@ -217,6 +229,7 @@ struct WhispApp: App {
                 .task { await startHotkeys() }
                 .task { await startContext() }
                 .task { await fileQueueModel.start() }
+                .task { await startConferenceHotkeys() }
                 .sheet(isPresented: .init(get: { !didOnboard }, set: { if !$0 { didOnboard = true } })) {
                     OnboardingView { didOnboard = true }
                         .environment(onboarding)
@@ -232,6 +245,8 @@ struct WhispApp: App {
                 .onChange(of: hotkeyKeyCode) { applyHotkey() }
                 .onChange(of: hotkeyModifiers) { applyHotkey() }
                 .onChange(of: hotkeyMode) { applyHotkey(); applyTranscriptionOptions() }   // re-evaluate auto-stop gating
+                .onChange(of: conferenceHotkeyKeyCode) { applyConferenceHotkey() }
+                .onChange(of: conferenceHotkeyModifiers) { applyConferenceHotkey() }
         }
         .windowStyle(.hiddenTitleBar)
         .commands {
@@ -245,7 +260,10 @@ struct WhispApp: App {
         }
 
         MenuBarExtra("whisp", image: "MenuBarIcon") {
-            MenuBarContent().environment(controller).environment(\.locale, appLocale)
+            MenuBarContent()
+                .environment(controller)
+                .environment(conferenceController)
+                .environment(\.locale, appLocale)
         }
         .menuBarExtraStyle(.menu)
     }
@@ -271,6 +289,30 @@ struct WhispApp: App {
             modifierMonitor.stop()
             let binding = HotkeyBinding(keyCode: UInt16(hotkeyKeyCode), modifiers: mods)
             try? hotkeys.start(binding, mode: hotkeyMode)
+        }
+    }
+
+    private func startConferenceHotkeys() async {
+        applyConferenceHotkey()
+        for await event in conferenceHotkeys.events where event == .toggle {
+            conferenceController.toggle()
+        }
+    }
+
+    /// Conference Mode is always a toggle (press to start, press to stop). Mirrors `applyHotkey`:
+    /// a modifier-only chord goes through the flagsChanged monitor; a key combo through Carbon.
+    private func applyConferenceHotkey() {
+        let mods = HotkeyModifiers(rawValue: conferenceHotkeyModifiers)
+        if conferenceHotkeyKeyCode < 0 {
+            conferenceHotkeys.stop()
+            conferenceModifierMonitor.onEvent = { [conferenceController] event in
+                if event == .toggle { conferenceController.toggle() }
+            }
+            conferenceModifierMonitor.start(modifier: mods, mode: .toggle)
+        } else {
+            conferenceModifierMonitor.stop()
+            let binding = HotkeyBinding(keyCode: UInt16(conferenceHotkeyKeyCode), modifiers: mods)
+            try? conferenceHotkeys.start(binding, mode: .toggle)
         }
     }
 
@@ -309,6 +351,7 @@ private struct OpenSettingsButton: View {
 
 private struct MenuBarContent: View {
     @Environment(DictationController.self) private var controller
+    @Environment(ConferenceController.self) private var conference
     @Environment(\.openWindow) private var openWindow
     @AppStorage("dictationLanguages") private var dictationLanguages = "en-US"
     @AppStorage("enhancementStyle") private var enhancementStyle = "auto"
@@ -338,6 +381,13 @@ private struct MenuBarContent: View {
         if !controller.liveText.isEmpty {
             Text(controller.liveText).lineLimit(1)
         }
+        Divider()
+        Button(LocalizedStringKey(conference.state == .recording
+                                  ? "Stop Conference Recording"
+                                  : "Start Conference Recording")) {
+            conference.toggle()
+        }
+        .disabled(conference.state == .transcribing)
         Divider()
         Button("Quit whisp") { NSApplication.shared.terminate(nil) }
             .keyboardShortcut("q")
