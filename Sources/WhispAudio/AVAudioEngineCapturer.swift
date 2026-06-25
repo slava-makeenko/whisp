@@ -58,8 +58,10 @@ public actor AVAudioEngineCapturer: AudioCapturer {
         // switched from A2DP (stereo output) to HFP (headset profile, mono) during capture.
         // Without this, AVAudioEngine picks the system default input, which can be the
         // headset mic — triggering a profile switch that macOS doesn't always reverse.
-        if let builtInID = Self.builtInInputDeviceID() {
-            pinInputDevice(builtInID)
+        // Pin the user-selected input device (Audio settings), else the built-in mic — the built-in
+        // keeps Bluetooth headphones on A2DP instead of switching them to the mono headset profile.
+        if let deviceID = AudioInputSelection.selectedDeviceID() ?? Self.builtInInputDeviceID() {
+            pinInputDevice(deviceID)
         }
 
         engine.prepare()

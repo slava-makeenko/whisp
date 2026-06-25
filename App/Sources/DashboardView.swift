@@ -4,22 +4,20 @@ import AppKit
 import ApplicationServices
 import WhispCore
 import WhispInput
-import WhispLLM
 import WhispPlatform
 
 struct DashboardView: View {
     @Environment(DictationController.self) private var controller
     @Environment(FileQueueModel.self) private var fileQueue
-    @Environment(LocalModelStore.self) private var store
     @Query(sort: \SessionMetric.date, order: .reverse) private var metrics: [SessionMetric]
     @Query(sort: \Transcription.createdAt, order: .reverse) private var transcriptions: [Transcription]
 
     @AppStorage("hotkeyKeyCode") private var hotkeyKeyCode = 49
     @AppStorage("hotkeyModifiers") private var hotkeyModifiers = HotkeyModifiers.option.rawValue
-    @AppStorage("enhancementStyle") private var enhancementStyle = "auto"
     @AppStorage("colorScheme") private var colorSchemeRaw = "system"
-    @AppStorage("dictationLanguages") private var dictationLanguages = "en-US"
-    @AppStorage("enhancementProvider") private var enhancementProvider = "openai"
+    @AppStorage("recentCollapsed") private var recentCollapsed = false
+    @AppStorage("enhancementProvider") private var enhancementProviderID = "openai"
+    @AppStorage("forceLocalEnhancement") private var forceLocalEnhancement = false
 
     @State private var dropTargeted = false
     @State private var recordHovering = false
@@ -54,7 +52,7 @@ struct DashboardView: View {
                     // Right rail
                     VStack(spacing: 16) {
                         statsPanel
-                        aiCard
+                        enhancementCard
                     }
                     .frame(width: 268)
                 }
@@ -172,11 +170,12 @@ struct DashboardView: View {
         NSFullUserName().split(separator: " ").first.map(String.init) ?? "there"
     }
 
-    /// Whether the active enhancement provider has an API key in the Keychain — drives the honest
-    /// "Mode needs a key" / "Privacy: Cloud" hints. Refreshed on appear and on app activation.
+    private var enhancementProvider: EnhancementProvider { EnhancementProvider(rawValue: enhancementProviderID) ?? .openAI }
+
+    /// Whether the active enhancement provider has an API key — drives the dashboard "Local vs Cloud"
+    /// status. Refreshed on appear and on app activation (e.g. returning from Settings).
     private func refreshCloudKey() {
-        let provider = EnhancementProvider(rawValue: enhancementProvider) ?? .openAI
-        let key = (try? KeychainSecretStore().get(provider.secretKey)) ?? nil
+        let key = (try? KeychainSecretStore().get(enhancementProvider.secretKey)) ?? nil
         cloudKeyConfigured = !(key ?? "").isEmpty
     }
 
@@ -311,8 +310,6 @@ struct DashboardView: View {
             .contentTransition(.opacity)
     }
 
-    private var currentMode: EnhancementStyle { EnhancementStyle(rawValue: enhancementStyle) ?? .auto }
-
     // MARK: - Transcribe Files
 
     private var filesCard: some View {
@@ -404,9 +401,22 @@ struct DashboardView: View {
     private var recentSection: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
-                Text("Recent")
-                    .font(.geist(size: 18, weight: .semibold))
-                    .foregroundStyle(Theme.primaryText)
+                Button {
+                    withAnimation(.easeOut(duration: 0.2)) { recentCollapsed.toggle() }
+                } label: {
+                    HStack(spacing: 6) {
+                        Text("Recent")
+                            .font(.geist(size: 18, weight: .semibold))
+                            .foregroundStyle(Theme.primaryText)
+                        Image(systemName: "chevron.down")
+                            .font(.geist(size: 11, weight: .semibold))
+                            .foregroundStyle(Theme.secondaryText)
+                            .rotationEffect(.degrees(recentCollapsed ? -90 : 0))
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain).pointingCursor()
+                .help(recentCollapsed ? "Show recent" : "Hide recent")
                 Spacer()
                 Button {
                     NotificationCenter.default.post(name: .whispOpenHistory, object: nil)
@@ -421,19 +431,21 @@ struct DashboardView: View {
             }
             .padding(.bottom, 4)
 
-            if transcriptions.isEmpty {
-                Text("No transcriptions yet — press \(hotkeyInline) and start talking.")
-                    .font(.geist(size: 14))
-                    .foregroundStyle(Theme.secondaryText)
-                    .padding(.vertical, 8)
-            } else {
-                ForEach(groupedRecent, id: \.key) { group in
-                    DateOverline(text: group.label)
-                        .padding(.top, 10).padding(.bottom, 2)
-                    VStack(spacing: 0) {
-                        ForEach(Array(group.items.enumerated()), id: \.element.id) { idx, item in
-                            if idx > 0 { Divider().overlay(Theme.hairline) }
-                            RecentRow(date: item.createdAt, text: item.text)
+            if !recentCollapsed {
+                if transcriptions.isEmpty {
+                    Text("No transcriptions yet — press \(hotkeyInline) and start talking.")
+                        .font(.geist(size: 14))
+                        .foregroundStyle(Theme.secondaryText)
+                        .padding(.vertical, 8)
+                } else {
+                    ForEach(groupedRecent, id: \.key) { group in
+                        DateOverline(text: group.label)
+                            .padding(.top, 10).padding(.bottom, 2)
+                        VStack(spacing: 0) {
+                            ForEach(Array(group.items.enumerated()), id: \.element.id) { idx, item in
+                                if idx > 0 { Divider().overlay(Theme.hairline) }
+                                RecentRow(date: item.createdAt, text: item.text)
+                            }
                         }
                     }
                 }
@@ -447,7 +459,7 @@ struct DashboardView: View {
 
     private var groupedRecent: [RecentGroup] {
         let cal = Calendar.current
-        let recent = Array(transcriptions.prefix(12))
+        let recent = Array(transcriptions.prefix(3))
         let grouped = Dictionary(grouping: recent) { cal.startOfDay(for: $0.createdAt) }
         return grouped.keys.sorted(by: >).map { day in
             RecentGroup(key: day, label: Self.overlineFormatter.string(from: day),
@@ -531,118 +543,67 @@ struct DashboardView: View {
         }
     }
 
-    // MARK: - AI card
+    // MARK: - Enhancement status
 
-    private var aiCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 10) {
-                ZStack {
-                    Circle().fill(Theme.accentSoft).frame(width: 36, height: 36)
-                    Image(systemName: "cpu").font(.geist(size: 16)).foregroundStyle(Theme.accent)
-                }
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("On-device AI")
-                        .font(.geist(size: 13, weight: .semibold))
-                        .foregroundStyle(Theme.primaryText)
-                    if let model = store.activeModel {
-                        Text("\(model.displayName) · downloaded")
-                            .font(.geist(size: 12)).foregroundStyle(Theme.secondaryText)
-                    } else {
-                        Text("No model downloaded")
-                            .font(.geist(size: 12)).foregroundStyle(Theme.mutedText)
-                    }
-                }
-                Spacer(minLength: 0)
-                if store.activeModel != nil {
-                    // Amber, not green: the model is on disk but its LLM doesn't run inference yet —
-                    // dictation still goes through basic on-device cleanup.
-                    Circle().fill(.orange).frame(width: 7, height: 7)
-                        .help("Model downloaded. On-device LLM inference isn't wired up yet — dictation uses basic cleanup until it ships.")
-                }
+    /// Cloud actually runs only when a key is connected AND the user hasn't forced Local.
+    private var effectiveCloud: Bool { !forceLocalEnhancement && cloudKeyConfigured }
+
+    /// Lets the user switch which tool processes their dictation — on-device cleanup (Local) or the
+    /// configured cloud provider (Cloud) — not just see it.
+    private var enhancementCard: some View {
+        VStack(alignment: .leading, spacing: 11) {
+            HStack(spacing: 7) {
+                Image(systemName: effectiveCloud ? "cloud.fill" : "cpu")
+                    .font(.geist(size: 13)).foregroundStyle(effectiveCloud ? .green : Theme.accent)
+                Text("Enhancement")
+                    .font(.geist(size: 13, weight: .semibold)).foregroundStyle(Theme.primaryText)
+                Spacer()
+                Circle().fill(effectiveCloud ? .green : Theme.mutedText.opacity(0.5)).frame(width: 7, height: 7)
             }
 
-            if store.activeModel != nil {
-                Divider().overlay(Theme.hairline)
-                menuRow(icon: "character.book.closed", label: "Language") {
-                    Menu {
-                        ForEach(DictationLanguage.all) { lang in
-                            Toggle(lang.name, isOn: Binding(
-                                get: { DictationLanguage.selectedIDs(dictationLanguages).contains(lang.id) },
-                                set: { _ in dictationLanguages = DictationLanguage.toggle(lang.id, in: dictationLanguages) }))
-                        }
-                    } label: {
-                        menuLabel(DictationLanguage.compactSummary(dictationLanguages))
-                    }
-                    .menuStyle(.borderlessButton).fixedSize().pointingCursor()
-                }
-                menuRow(icon: "wand.and.stars", label: "Mode") {
-                    Menu {
-                        ForEach(EnhancementStyle.allCases) { style in
-                            Toggle(LocalizedStringKey(style.name), isOn: Binding(
-                                get: { enhancementStyle == style.rawValue },
-                                set: { if $0 { enhancementStyle = style.rawValue } }))
-                        }
-                        if !cloudKeyConfigured {
-                            Divider()
-                            Text("Email, Message & Code need an API key (Settings → AI).")
-                        }
-                    } label: {
-                        menuLabel(currentMode.name,
-                                  warn: currentMode.needsCloudLLM && !cloudKeyConfigured)
-                    }
-                    .menuStyle(.borderlessButton).fixedSize().pointingCursor()
-                }
-                infoRow(icon: "lock.shield", label: "Privacy",
-                        value: cloudKeyConfigured ? "Cloud LLM" : "Local")
-            } else {
-                Text("Go to Settings → AI to download a model")
+            HStack(spacing: 3) {
+                enhancementTab("Local", active: forceLocalEnhancement) { forceLocalEnhancement = true }
+                enhancementTab("Cloud", active: !forceLocalEnhancement) { forceLocalEnhancement = false }
+            }
+            .padding(3)
+            .background(Theme.groupBG, in: RoundedRectangle(cornerRadius: Theme.Radius.sm, style: .continuous))
+
+            if forceLocalEnhancement {
+                Text("On-device cleanup.")
                     .font(.geist(size: 11)).foregroundStyle(Theme.mutedText)
-            }
-
-            ForEach(OnDeviceModel.catalog) { model in
-                if case .downloading(let p) = store.states[model.id] ?? .notDownloaded {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Divider().overlay(Theme.hairline)
-                        Text("Downloading \(model.displayName)")
-                            .font(.geist(size: 11)).foregroundStyle(Theme.secondaryText)
-                        ProgressView(value: p).progressViewStyle(.linear).tint(Theme.accent)
-                        Text("\(Int(p * 100))%").font(.geistMono(size: 10)).foregroundStyle(Theme.mutedText)
-                    }
+            } else if cloudKeyConfigured {
+                Text("\(enhancementProvider.displayName) · connected")
+                    .font(.geist(size: 11)).foregroundStyle(Theme.secondaryText)
+            } else {
+                Button {
+                    NotificationCenter.default.post(name: .whispOpenSettings, object: nil)
+                } label: {
+                    Text("No key — add one in Settings → AI")
+                        .font(.geist(size: 11)).foregroundStyle(.orange)
                 }
+                .buttonStyle(.plain).pointingCursor()
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .wispCard(padding: 20)
+        .wispCard(padding: 16)
     }
 
-    @ViewBuilder private func menuRow<Trailing: View>(icon: String, label: LocalizedStringKey,
-                                                      @ViewBuilder trailing: () -> Trailing) -> some View {
-        HStack {
-            Image(systemName: icon).font(.geist(size: 12)).foregroundStyle(Theme.secondaryText).frame(width: 16)
-            Text(label).font(.geist(size: 12)).foregroundStyle(Theme.secondaryText)
-            Spacer()
-            trailing()
+    private func enhancementTab(_ title: LocalizedStringKey, active: Bool, _ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.geist(size: 12, weight: .medium))
+                .foregroundStyle(active ? Theme.primaryText : Theme.secondaryText)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 6)
+                .background(active ? Theme.cardBG : Color.clear,
+                            in: RoundedRectangle(cornerRadius: Theme.Radius.xs, style: .continuous))
+                .overlay {
+                    if active {
+                        RoundedRectangle(cornerRadius: Theme.Radius.xs, style: .continuous).stroke(Theme.hairline)
+                    }
+                }
         }
-    }
-
-    private func menuLabel(_ text: String, warn: Bool = false) -> some View {
-        HStack(spacing: 3) {
-            if warn {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.geist(size: 9)).foregroundStyle(.orange)
-            }
-            Text(text).font(.geist(size: 12, weight: .medium)).foregroundStyle(Theme.primaryText)
-            Image(systemName: "chevron.up.chevron.down").font(.geist(size: 8)).foregroundStyle(Theme.secondaryText)
-        }
-    }
-
-    private func infoRow(icon: String, label: LocalizedStringKey, value: LocalizedStringKey) -> some View {
-        HStack {
-            Image(systemName: icon).font(.geist(size: 12)).foregroundStyle(Theme.secondaryText).frame(width: 16)
-            Text(label).font(.geist(size: 12)).foregroundStyle(Theme.secondaryText)
-            Spacer()
-            Text(value).font(.geist(size: 12, weight: .medium)).foregroundStyle(Theme.primaryText)
-        }
+        .buttonStyle(.plain).pointingCursor()
     }
 
     // MARK: - Accessibility banner

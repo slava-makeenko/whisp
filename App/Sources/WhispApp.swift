@@ -105,8 +105,8 @@ struct WhispApp: App {
                 let key = (try? KeychainSecretStore().get(provider.secretKey)) ?? nil
                 let prompt = style == .custom ? (defaults.string(forKey: "enhancementPrompt") ?? "") : (style.prompt ?? "")
 
-                if let key, !key.isEmpty, !prompt.isEmpty {
-                    // Cloud LLM (API key configured)
+                if !defaults.bool(forKey: "forceLocalEnhancement"), let key, !key.isEmpty, !prompt.isEmpty {
+                    // Cloud LLM — used only when a key is set AND the user hasn't picked Local on the dashboard
                     let model = defaults.string(forKey: "enhancementModel") ?? ""
                     do {
                         result = try await URLSessionLLMEnhancer(apiKey: key)
@@ -131,7 +131,8 @@ struct WhispApp: App {
                 // Command Mode: ask the LLM to apply the spoken instruction to the selected text.
                 let defaults = UserDefaults.standard
                 let provider = EnhancementProvider(rawValue: defaults.string(forKey: "enhancementProvider") ?? "openai") ?? .openAI
-                guard let key = (try? KeychainSecretStore().get(provider.secretKey)) ?? nil, !key.isEmpty else { return nil }
+                guard !defaults.bool(forKey: "forceLocalEnhancement"),
+                      let key = (try? KeychainSecretStore().get(provider.secretKey)) ?? nil, !key.isEmpty else { return nil }
                 let model = defaults.string(forKey: "enhancementModel") ?? ""
                 let prompt = "You are a precise text editor. Apply the user's instruction to the text below and output ONLY the resulting text — no quotes, no commentary. Instruction: \(command)"
                 do {
@@ -145,6 +146,8 @@ struct WhispApp: App {
             onCue: { [soundStart, soundStop] cue in
                 guard UserDefaults.standard.object(forKey: "playSoundCues") as? Bool ?? true else { return }
                 let sound = cue == .start ? soundStart : soundStop
+                let outputUID = UserDefaults.standard.string(forKey: "audioOutputDeviceUID") ?? ""
+                sound?.playbackDeviceIdentifier = outputUID.isEmpty ? nil : outputUID
                 sound?.volume = 0.5
                 sound?.stop()   // reset so play() always fires, even if previous instance hasn't finished
                 sound?.play()
@@ -168,7 +171,7 @@ struct WhispApp: App {
                     let provider = EnhancementProvider(rawValue: defaults.string(forKey: "enhancementProvider") ?? "openai") ?? .openAI
                     let key = (try? KeychainSecretStore().get(provider.secretKey)) ?? nil
                     let prompt = style == .custom ? (defaults.string(forKey: "enhancementPrompt") ?? "") : (style.prompt ?? "")
-                    if let key, !key.isEmpty, !prompt.isEmpty {
+                    if !defaults.bool(forKey: "forceLocalEnhancement"), let key, !key.isEmpty, !prompt.isEmpty {
                         let model = defaults.string(forKey: "enhancementModel") ?? ""
                         do {
                             result = try await URLSessionLLMEnhancer(apiKey: key)

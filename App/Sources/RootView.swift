@@ -9,6 +9,7 @@ struct RootView: View {
         case conference = "Conference"
         case powerMode  = "Power Mode"
         case settings   = "Settings"
+        case help       = "Help"
 
         var id: String { rawValue }
         var symbol: String {
@@ -18,6 +19,7 @@ struct RootView: View {
             case .conference: "person.2.wave.2"
             case .powerMode:  "bolt"
             case .settings:   "gearshape"
+            case .help:       "questionmark.circle"
             }
         }
     }
@@ -108,10 +110,8 @@ struct RootView: View {
 
             SidebarRow(title: "Settings", symbol: "gearshape",
                        selected: selection == .settings) { selection = .settings }
-            SidebarRow(title: "Help", symbol: "questionmark.circle", selected: false) {
-                if let url = URL(string: "https://github.com/slava-makeenko/whisp") {
-                    NSWorkspace.shared.open(url)
-                }
+            SidebarRow(title: "Help", symbol: "questionmark.circle", selected: selection == .help) {
+                selection = .help
             }
         }
         .padding(10)
@@ -128,6 +128,7 @@ struct RootView: View {
         case .conference: ConferencesView()
         case .powerMode:  PowerModeView()
         case .settings:   SettingsView()
+        case .help:       HelpView()
         }
     }
 }

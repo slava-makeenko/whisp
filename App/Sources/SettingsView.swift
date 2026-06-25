@@ -12,7 +12,6 @@ import WhispASR
 /// right. Each row is "title + description … control". Adapted to whisp's own features.
 struct SettingsView: View {
     @Environment(\.modelContext) private var modelContext
-    @Environment(LocalModelStore.self) private var modelStore
     @EnvironmentObject private var updater: UpdaterController
     @Query(sort: \DictionaryEntry.term) private var entries: [DictionaryEntry]
     @State private var newTerm = ""
@@ -39,6 +38,10 @@ struct SettingsView: View {
     @AppStorage("autoStopOnSilence") private var autoStopOnSilence = false
     @AppStorage("playSoundCues") private var playSoundCues = true
     @AppStorage("transcriptionEngine") private var transcriptionEngine = "auto"
+    @AppStorage("audioInputDeviceUID") private var audioInputDeviceUID = ""
+    @AppStorage("audioOutputDeviceUID") private var audioOutputDeviceUID = ""
+    @AppStorage("forceLocalEnhancement") private var forceLocalEnhancement = false
+    @State private var audioDevices = AudioDevicesModel()
     @State private var apiKey = ""
     @State private var licenseKey = ""
     @State private var testing = false
@@ -50,11 +53,12 @@ struct SettingsView: View {
     private var enhancementProvider: EnhancementProvider { EnhancementProvider(rawValue: enhancementProviderID) ?? .openAI }
 
     enum SettingsCategory: String, CaseIterable, Identifiable {
-        case general, appearance, ai, dictionary, data
+        case general, audio, appearance, ai, dictionary, data
         var id: String { rawValue }
         var title: LocalizedStringKey {
             switch self {
             case .general:    "General"
+            case .audio:      "Audio"
             case .appearance: "Appearance"
             case .ai:         "AI"
             case .dictionary: "Dictionary"
@@ -64,6 +68,7 @@ struct SettingsView: View {
         var symbol: String {
             switch self {
             case .general:    "slider.horizontal.3"
+            case .audio:      "waveform"
             case .appearance: "paintbrush"
             case .ai:         "sparkles"
             case .dictionary: "character.book.closed"
@@ -115,83 +120,6 @@ struct SettingsView: View {
         .background(Theme.windowBG)
     }
 
-    // MARK: - On-device model section
-
-    private var onDeviceModelSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("ON-DEVICE MODEL")
-                .font(.geist(size: 11, weight: .semibold))
-                .foregroundStyle(Theme.secondaryText)
-            SettingsGroup {
-                ForEach(OnDeviceModel.catalog) { model in
-                    let state = modelStore.states[model.id] ?? .notDownloaded
-                    let isActive = modelStore.activeModel?.id == model.id
-                    SettingRow(LocalizedStringKey(model.displayName),
-                               description: LocalizedStringKey(model.description)) {
-                        settingsModelControl(model: model, state: state, isActive: isActive)
-                    }
-                    if model.id != OnDeviceModel.catalog.last?.id { RowDivider() }
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func settingsModelControl(model: OnDeviceModel,
-                                      state: ModelDownloadState,
-                                      isActive: Bool) -> some View {
-        switch state {
-        case .notDownloaded:
-            Button {
-                modelStore.startDownload(model)
-            } label: {
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text("Download")
-                        .font(.geist(size: 12, weight: .medium))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 10).padding(.vertical, 5)
-                        .background(Theme.accent, in: Capsule())
-                    Text(model.sizeFormatted).font(.geist(size: 10)).foregroundStyle(Theme.secondaryText)
-                }
-            }
-            .buttonStyle(.plain).pointingCursor()
-
-        case .downloading(let progress):
-            VStack(alignment: .trailing, spacing: 4) {
-                ProgressView(value: progress).progressViewStyle(.linear)
-                    .frame(width: 100).tint(Theme.accent)
-                HStack(spacing: 8) {
-                    Text("\(Int(progress * 100))%").font(.geist(size: 10)).foregroundStyle(Theme.secondaryText)
-                    Button("Cancel") { modelStore.cancelDownload(model) }
-                        .font(.geist(size: 10)).foregroundStyle(.red).buttonStyle(.plain).pointingCursor()
-                }
-            }
-
-        case .downloaded:
-            if isActive {
-                Label("Active", systemImage: "checkmark.circle.fill")
-                    .font(.geist(size: 12, weight: .medium))
-                    .foregroundStyle(.green)
-            } else {
-                HStack(spacing: 8) {
-                    Button("Use") { modelStore.select(model) }
-                        .font(.geist(size: 12, weight: .medium))
-                        .foregroundStyle(Theme.accent)
-                        .buttonStyle(.plain).pointingCursor()
-                    Button { modelStore.delete(model) } label: {
-                        Image(systemName: "trash").font(.geist(size: 12))
-                    }
-                    .buttonStyle(.plain).foregroundStyle(Theme.secondaryText).pointingCursor()
-                }
-            }
-
-        case .failed:
-            Button("Retry") { modelStore.startDownload(model) }
-                .font(.geist(size: 12, weight: .medium))
-                .foregroundStyle(.red).buttonStyle(.plain).pointingCursor()
-        }
-    }
-
     private var versionString: String {
         "whisp " + ((Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "")
     }
@@ -201,11 +129,46 @@ struct SettingsView: View {
     @ViewBuilder private var content: some View {
         switch category {
         case .general:    generalContent
+        case .audio:      audioContent
         case .appearance: appearanceContent
         case .ai:         aiContent
         case .dictionary: dictionaryContent
         case .data:       dataContent
         }
+    }
+
+    private var audioContent: some View {
+        VStack(alignment: .leading, spacing: 22) {
+            SettingsGroup {
+                SettingRow("Microphone", description: "Input device whisp records from (dictation & conference).") {
+                    WispValueMenu(selection: $audioInputDeviceUID,
+                                  options: deviceOptions(audioDevices.inputs,
+                                                         defaultName: audioDevices.defaultInputName,
+                                                         selected: audioInputDeviceUID))
+                }
+                RowDivider()
+                SettingRow("Output", description: "Where whisp plays its start / stop sound cues.") {
+                    WispValueMenu(selection: $audioOutputDeviceUID,
+                                  options: deviceOptions(audioDevices.outputs,
+                                                         defaultName: audioDevices.defaultOutputName,
+                                                         selected: audioOutputDeviceUID))
+                }
+            }
+            CardCaption("System Default follows macOS — the active device is shown in the menu. Picking a specific device affects whisp only, not the system.")
+        }
+        .onAppear { audioDevices.start() }
+        .onDisappear { audioDevices.stop() }
+    }
+
+    /// `[(uid, name)]` for the device menu: a "System Default" row (showing the live default device),
+    /// the connected devices, and — if the chosen device is unplugged — a placeholder so it still shows.
+    private func deviceOptions(_ devices: [AudioDeviceInfo], defaultName: String, selected: String) -> [(String, String)] {
+        var options: [(String, String)] = [("", defaultName.isEmpty ? "System Default" : "System Default — \(defaultName)")]
+        options += devices.map { ($0.uid, $0.name) }
+        if !selected.isEmpty, !devices.contains(where: { $0.uid == selected }) {
+            options.append((selected, "Selected device (disconnected)"))
+        }
+        return options
     }
 
     private var generalContent: some View {
@@ -337,33 +300,64 @@ struct SettingsView: View {
 
     private var currentStyle: EnhancementStyle { EnhancementStyle(rawValue: enhancementStyle) ?? .auto }
 
+    /// Cloud enhancement is "Active" only when the selected provider has a key AND the user hasn't
+    /// switched to Local (the dashboard Local/Cloud toggle). Otherwise everything runs on-device.
+    private var cloudActive: Bool { !apiKey.isEmpty && !forceLocalEnhancement }
+
     private var aiContent: some View {
         VStack(alignment: .leading, spacing: 22) {
-            onDeviceModelSection
+            // Status + local cleanup
             SettingsGroup {
-                SettingRow("Formatting", description: "Auto adapts to the focused app. Clean-up works on-device; the rest use the LLM below.") {
-                    WispValueMenu(selection: $enhancementStyle, options: EnhancementStyle.allCases.map { ($0.rawValue, $0.name) })
-                }
-                if currentStyle != .raw {
-                    RowDivider()
-                    SettingRow("Provider") {
-                        WispValueMenu(selection: $enhancementProviderID,
-                                      options: EnhancementProvider.allCases.map { ($0.rawValue, $0.displayName) })
+                SettingRow("Text enhancement", description: cloudActive
+                    ? "Active — \(enhancementProvider.displayName) rewrites your transcribed text. Audio never leaves your Mac."
+                    : "Local — whisp cleans up dictation on-device. Add a cloud key below for smarter formatting.") {
+                    if cloudActive {
+                        Label("Active", systemImage: "checkmark.circle.fill")
+                            .font(.geist(size: 13, weight: .medium)).foregroundStyle(.green)
+                    } else {
+                        Label("Local", systemImage: "checkmark.shield.fill")
+                            .font(.geist(size: 13, weight: .medium)).foregroundStyle(Theme.secondaryText)
                     }
+                }
+                if !cloudActive {
                     RowDivider()
-                    SettingRow("API key", description: testMessage.map { LocalizedStringKey($0) }) {
-                        HStack(spacing: 8) {
-                            SecureField("\(enhancementProvider.displayName) key", text: $apiKey)
-                                .onChange(of: apiKey) { _, value in
-                                    try? keychain.set(value.isEmpty ? nil : value, for: enhancementProvider.secretKey)
-                                }
-                                .wispField().frame(width: 190)
-                            Button("Test") { Task { await testKey() } }
-                                .buttonStyle(WisprButtonStyle())
-                                .disabled(apiKey.isEmpty || testing)
-                            if testing { ProgressView().controlSize(.small) }
+                    SettingRow("Clean up dictation", description: "Remove filler words and fix punctuation on-device.") {
+                        Toggle("", isOn: Binding(
+                            get: { currentStyle != .raw },
+                            set: { enhancementStyle = $0 ? "cleanUp" : "raw" }))
+                            .labelsHidden().toggleStyle(WisprToggleStyle())
+                    }
+                }
+            }
+
+            // Cloud enhancement (optional) — extra rows appear only once a key is connected.
+            SettingsGroup {
+                SettingRow("Cloud provider", description: "Optional. Pick a provider and add its key to enable LLM formatting.") {
+                    WispValueMenu(selection: $enhancementProviderID,
+                                  options: EnhancementProvider.allCases.map { ($0.rawValue, $0.displayName) })
+                }
+                RowDivider()
+                SettingRow("API key", description: testMessage.map { LocalizedStringKey($0) }) {
+                    HStack(spacing: 8) {
+                        SecureField("\(enhancementProvider.displayName) key", text: $apiKey)
+                            .onChange(of: apiKey) { _, value in
+                                try? keychain.set(value.isEmpty ? nil : value, for: enhancementProvider.secretKey)
+                                testMessage = nil; testOK = false   // stale result no longer applies
+                            }
+                            .wispField().frame(width: 190)
+                        Button("Test") { Task { await testKey() } }
+                            .buttonStyle(WisprButtonStyle())
+                            .disabled(apiKey.isEmpty || testing)
+                        if testing {
+                            ProgressView().controlSize(.small)
+                        } else if testMessage != nil {
+                            Image(systemName: testOK ? "checkmark.circle.fill" : "xmark.circle.fill")
+                                .font(.geist(size: 16))
+                                .foregroundStyle(testOK ? .green : .red)
                         }
                     }
+                }
+                if cloudActive {
                     RowDivider()
                     SettingRow("Model") {
                         WispValueMenu(selection: modelPickerBinding,
@@ -373,6 +367,11 @@ struct SettingsView: View {
                         RowDivider()
                         SettingRow("Model id") { TextField("", text: $enhancementModel).wispField().frame(width: 200) }
                     }
+                    RowDivider()
+                    SettingRow("Formatting", description: "How the model rewrites your dictation.") {
+                        WispValueMenu(selection: $enhancementStyle,
+                                      options: EnhancementStyle.allCases.map { ($0.rawValue, $0.name) })
+                    }
                     if currentStyle == .custom {
                         RowDivider()
                         SettingRow("Custom prompt") {
@@ -380,9 +379,14 @@ struct SettingsView: View {
                         }
                     }
                 }
-                RowDivider()
-                SettingRow("Command Mode", description: "Select text in any app, dictate an instruction — whisp replaces it with the AI-edited result.") {
-                    Toggle("", isOn: $commandModeEnabled).labelsHidden().toggleStyle(WisprToggleStyle())
+            }
+
+            // Command Mode needs the cloud LLM — only shown when it can actually run.
+            if cloudActive {
+                SettingsGroup {
+                    SettingRow("Command Mode", description: "Select text in any app, dictate an instruction — whisp replaces it with the AI-edited result.") {
+                        Toggle("", isOn: $commandModeEnabled).labelsHidden().toggleStyle(WisprToggleStyle())
+                    }
                 }
             }
         }

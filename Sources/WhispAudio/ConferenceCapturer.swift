@@ -71,7 +71,7 @@ public final class ConferenceCapturer: @unchecked Sendable {
         // 2. Private aggregate device = built-in mic (clock master) + the tap (drift-compensated).
         //    The aggregate presents the subdevice's input channels FIRST, then the tap's — so the
         //    first `micChannels` input channels are the mic and the rest are the system audio.
-        let micDevID = Self.defaultInputDeviceID()
+        let micDevID = AudioInputSelection.selectedDeviceID() ?? Self.defaultInputDeviceID()
         let micUID = micDevID.flatMap { Self.deviceUID($0) }
         let micChannels = micDevID.map { Self.inputChannelCount(of: $0) } ?? 0
 
