@@ -233,7 +233,7 @@ struct WhispApp: App {
                 .modelContainer(container)
                 .task { await startHotkeys() }
                 .task { await startContext() }
-                .task { await fileQueueModel.start() }
+                .task { fileQueueModel.modelContainer = container; await fileQueueModel.start() }
                 .task { await startConferenceHotkeys() }
                 .sheet(isPresented: .init(get: { !didOnboard }, set: { if !$0 { didOnboard = true } })) {
                     OnboardingView { didOnboard = true }

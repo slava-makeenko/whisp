@@ -23,4 +23,12 @@ public enum AppConstants: Sendable {
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
     }
+
+    /// `~/Library/Application Support/Whisp/FileTranscriptions`, created on demand. Holds copies of
+    /// the audio/video files transcribed via the Transcribe Files card.
+    public static func fileTranscriptionsDirectory() throws -> URL {
+        let dir = try applicationSupportDirectory().appendingPathComponent("FileTranscriptions", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }
 }

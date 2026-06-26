@@ -322,20 +322,23 @@ struct DashboardView: View {
                 GlassPillButton(title: "Add File", systemImage: "plus") { pickFiles() }
             }
 
-            // Dropzone
-            VStack(spacing: 8) {
+            // Compact dropzone — smaller, especially while jobs are listed below.
+            HStack(spacing: 10) {
                 Image(systemName: "icloud.and.arrow.up")
-                    .font(.geist(size: 26))
+                    .font(.geist(size: 16))
                     .foregroundStyle(dropTargeted ? Theme.accent : Color(Fluid.clay300))
-                Text("Drag and drop audio files here")
-                    .font(.geist(size: 14, weight: .semibold))
-                    .foregroundStyle(Theme.primaryText)
-                Text("Supports .mp3, .wav, .m4a and other audio")
-                    .font(.geist(size: 12))
-                    .foregroundStyle(Theme.mutedText)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Drag and drop a file here")
+                        .font(.geist(size: 13, weight: .semibold))
+                        .foregroundStyle(Theme.primaryText)
+                    Text("Audio (.mp3, .wav, .m4a…) and video (.mp4, .mov…)")
+                        .font(.geist(size: 11))
+                        .foregroundStyle(Theme.mutedText)
+                }
+                Spacer(minLength: 0)
             }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 30)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 12).padding(.horizontal, 14)
             .background(dropTargeted ? Theme.accentSoft : Color.clear,
                         in: RoundedRectangle(cornerRadius: Theme.Radius.sm, style: .continuous))
             .overlay(
@@ -345,9 +348,6 @@ struct DashboardView: View {
             )
             .scaleEffect(dropTargeted ? 1.01 : 1)
             .animation(.spring(response: 0.3, dampingFraction: 0.7), value: dropTargeted)
-            .onDrop(of: [.fileURL], isTargeted: $dropTargeted) { providers in
-                loadURLs(from: providers); return true
-            }
 
             if !fileQueue.jobs.isEmpty {
                 VStack(spacing: 0) {
@@ -359,37 +359,54 @@ struct DashboardView: View {
             }
         }
         .wispCard(padding: 20)
+        .contentShape(Rectangle())
+        // Drop anywhere on the card, not just the compact strip — a small strip is an easy miss.
+        .onDrop(of: [.fileURL], isTargeted: $dropTargeted) { providers in
+            loadURLs(from: providers); return true
+        }
         .animation(.default, value: fileQueue.jobs)
     }
 
     @ViewBuilder private func jobRow(_ job: TranscriptionJob) -> some View {
+        let isDone = { if case .done = job.state { return true } else { return false } }()
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text(job.url.lastPathComponent)
-                    .font(.geist(size: 13, weight: .medium))
-                    .lineLimit(1).foregroundStyle(Theme.primaryText)
+                if isDone {
+                    // Finished: the name becomes a link straight to its saved transcription.
+                    Button { openSavedTranscription(job) } label: {
+                        HStack(spacing: 5) {
+                            Text(job.url.lastPathComponent)
+                                .font(.geist(size: 13, weight: .medium)).lineLimit(1)
+                            Image(systemName: "arrow.up.forward").font(.geist(size: 10, weight: .semibold))
+                        }
+                        .foregroundStyle(Theme.accent)
+                    }
+                    .buttonStyle(.plain).pointingCursor().help("Open transcription")
+                } else {
+                    Text(job.url.lastPathComponent)
+                        .font(.geist(size: 13, weight: .medium))
+                        .lineLimit(1).foregroundStyle(Theme.primaryText)
+                }
                 Spacer()
                 jobBadge(job.state)
-            }
-            if case .done(let text) = job.state {
-                HStack(alignment: .top, spacing: 8) {
-                    Text(text)
-                        .font(.geist(size: 12))
-                        .foregroundStyle(Theme.secondaryText)
-                        .lineLimit(4)
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    Button {
-                        NSPasteboard.general.clearContents()
-                        NSPasteboard.general.setString(text, forType: .string)
-                    } label: {
-                        Image(systemName: "doc.on.doc").font(.geist(size: 11))
-                    }
-                    .buttonStyle(.plain).foregroundStyle(Theme.secondaryText).pointingCursor()
+                if isDone {
+                    Button { fileQueue.remove(job.id) } label: { Image(systemName: "xmark").font(.geist(size: 10)) }
+                        .buttonStyle(.plain).foregroundStyle(Theme.secondaryText).pointingCursor().help("Dismiss")
                 }
             }
+            if case .running(let progress) = job.state {
+                ProgressView(value: progress).progressViewStyle(.linear).tint(Theme.accent)
+            }
             if case .failed(let error) = job.state {
-                Text(error).font(.geist(size: 11)).foregroundStyle(.red.opacity(0.85)).lineLimit(2)
+                HStack(alignment: .top, spacing: 8) {
+                    Text(error).font(.geist(size: 11)).foregroundStyle(.red.opacity(0.85)).lineLimit(2)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Button("Retry") { fileQueue.retry(job.id) }
+                        .font(.geist(size: 11, weight: .medium)).foregroundStyle(Theme.accent)
+                        .buttonStyle(.plain).pointingCursor()
+                    Button { fileQueue.remove(job.id) } label: { Image(systemName: "xmark").font(.geist(size: 10)) }
+                        .buttonStyle(.plain).foregroundStyle(Theme.secondaryText).pointingCursor()
+                }
             }
         }
         .padding(.vertical, 10)
@@ -646,8 +663,13 @@ struct DashboardView: View {
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = true
         panel.canChooseDirectories = false
-        panel.allowedContentTypes = [.audio, .mpeg4Audio, .mp3, .wav, .aiff]
+        panel.allowedContentTypes = [.audio, .mpeg4Audio, .mp3, .wav, .aiff, .movie, .video, .mpeg4Movie, .quickTimeMovie]
         if panel.runModal() == .OK { fileQueue.enqueue(panel.urls) }
+    }
+
+    /// Opens the Files tab on the transcription saved for this finished job.
+    private func openSavedTranscription(_ job: TranscriptionJob) {
+        NotificationCenter.default.post(name: .whispOpenFiles, object: fileQueue.recordID(for: job.id))
     }
 
     private func loadURLs(from providers: [NSItemProvider]) {
@@ -662,10 +684,10 @@ struct DashboardView: View {
 
     @ViewBuilder private func jobBadge(_ state: TranscriptionJob.State) -> some View {
         switch state {
-        case .queued:  Text("Queued").font(.geist(size: 11)).foregroundStyle(Theme.mutedText)
-        case .running: ProgressView().controlSize(.small)
-        case .done:    Label("Done", systemImage: "checkmark.circle.fill").font(.geist(size: 11)).foregroundStyle(.green)
-        case .failed:  Label("Failed", systemImage: "xmark.circle.fill").font(.geist(size: 11)).foregroundStyle(.red)
+        case .queued:           Text("Queued").font(.geist(size: 11)).foregroundStyle(Theme.mutedText)
+        case .running(let p):   Text("\(Int(p * 100))%").font(.geistMono(size: 11)).foregroundStyle(Theme.accent)
+        case .done:             Label("Done", systemImage: "checkmark.circle.fill").font(.geist(size: 11)).foregroundStyle(.green)
+        case .failed:           Label("Failed", systemImage: "xmark.circle.fill").font(.geist(size: 11)).foregroundStyle(.red)
         }
     }
 }

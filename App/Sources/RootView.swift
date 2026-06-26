@@ -6,6 +6,7 @@ struct RootView: View {
     enum Section: String, CaseIterable, Identifiable {
         case dashboard  = "Home"
         case history    = "History"
+        case files      = "Files"
         case conference = "Conference"
         case powerMode  = "Power Mode"
         case settings   = "Settings"
@@ -16,6 +17,7 @@ struct RootView: View {
             switch self {
             case .dashboard:  "house"
             case .history:    "clock"
+            case .files:      "doc.text"
             case .conference: "person.2.wave.2"
             case .powerMode:  "bolt"
             case .settings:   "gearshape"
@@ -74,6 +76,9 @@ struct RootView: View {
         .onReceive(NotificationCenter.default.publisher(for: .whispOpenPowerMode)) { _ in
             selection = .powerMode
         }
+        .onReceive(NotificationCenter.default.publisher(for: .whispOpenFiles)) { _ in
+            selection = .files
+        }
         .overlay(alignment: .bottomTrailing) {
             Text(appVersion)
                 .font(.geist(size: 11))
@@ -97,7 +102,7 @@ struct RootView: View {
             }
             .padding(.horizontal, 10).padding(.top, 10).padding(.bottom, 16)
 
-            ForEach([Section.dashboard, .history, .conference, .powerMode]) { section in
+            ForEach([Section.dashboard, .history, .files, .conference, .powerMode]) { section in
                 SidebarRow(title: section.rawValue, symbol: section.symbol,
                            selected: selection == section) { selection = section }
             }
@@ -128,6 +133,7 @@ struct RootView: View {
         switch selection {
         case .dashboard:  DashboardView()
         case .history:    HistoryView()
+        case .files:      FileTranscriptionsView()
         case .conference: ConferencesView()
         case .powerMode:  PowerModeView()
         case .settings:   SettingsView()

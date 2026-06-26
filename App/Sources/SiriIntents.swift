@@ -6,6 +6,8 @@ extension Notification.Name {
     static let whispOpenSettings    = Notification.Name("com.slavamakeenko.whisp.openSettings")
     static let whispOpenHistory     = Notification.Name("com.slavamakeenko.whisp.openHistory")
     static let whispOpenPowerMode   = Notification.Name("com.slavamakeenko.whisp.openPowerMode")
+    /// Posted with a `FileTranscription.id` (UUID) as `object` to open the Files tab on that record.
+    static let whispOpenFiles       = Notification.Name("com.slavamakeenko.whisp.openFiles")
 }
 
 /// Siri / Shortcuts action that toggles dictation in the running app via a notification.
