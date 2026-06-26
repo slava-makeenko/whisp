@@ -17,6 +17,8 @@ public final class Conference {
     public var wordCount: Int = 0
     /// AI summary of the transcript (empty until generated). Default keeps lightweight migration.
     public var summary: String = ""
+    /// JSON map of diarized label → custom display name (e.g. {"Собеседник 1":"Аня"}). Empty = none.
+    public var speakerNames: String = ""
 
     public init() {}
 

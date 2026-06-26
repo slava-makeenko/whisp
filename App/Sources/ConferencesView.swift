@@ -99,6 +99,7 @@ private struct ConferenceDetail: View {
     let onDelete: () -> Void
     @Environment(\.modelContext) private var modelContext
     @State private var isEditingTitle = false
+    @State private var isRenamingSpeakers = false
     @FocusState private var titleFocused: Bool
 
     var body: some View {
@@ -160,10 +161,11 @@ private struct ConferenceDetail: View {
                         Text("Transcribing…").font(.geist(size: 13)).foregroundStyle(Theme.secondaryText)
                     }
                 } else {
+                    speakersSection
                     TranscriptSummaryView(transcript: conference.transcript, summary: $conference.summary) {
                         try? modelContext.save()
                     }
-                    DiarizedTranscript(text: conference.transcript)
+                    DiarizedTranscript(text: conference.transcript, names: SpeakerNames.decode(conference.speakerNames))
                 }
             }
             .padding(28)
@@ -173,6 +175,60 @@ private struct ConferenceDetail: View {
         .scrollContentBackground(.hidden)
         .background(Theme.windowBG)
         .id(conference.id)
+    }
+
+    /// Speaker rename — collapsed behind a small button; the form opens on demand (diarized only).
+    @ViewBuilder private var speakersSection: some View {
+        let labels = SpeakerNames.labels(in: conference.transcript)
+        if labels.count > 1 {
+            if isRenamingSpeakers {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "person.crop.circle").font(.geist(size: 13)).foregroundStyle(Theme.accent)
+                        Text("Speakers").font(.geist(size: 14, weight: .semibold)).foregroundStyle(Theme.primaryText)
+                        Spacer()
+                        Button("Done") { isRenamingSpeakers = false }
+                            .font(.geist(size: 12, weight: .medium)).foregroundStyle(Theme.accent)
+                            .buttonStyle(.plain).pointingCursor()
+                    }
+                    ForEach(labels, id: \.self) { label in
+                        HStack(spacing: 10) {
+                            Text(label).font(.geist(size: 13)).foregroundStyle(Theme.secondaryText)
+                                .frame(width: 110, alignment: .leading)
+                            TextField("Name", text: nameBinding(for: label))
+                                .textFieldStyle(.plain).font(.geist(size: 13)).foregroundStyle(Theme.primaryText)
+                                .padding(.horizontal, 8).padding(.vertical, 5)
+                                .background(Theme.windowBG, in: RoundedRectangle(cornerRadius: Theme.Radius.xs, style: .continuous))
+                                .overlay(RoundedRectangle(cornerRadius: Theme.Radius.xs, style: .continuous).stroke(Theme.hairline))
+                                .frame(maxWidth: 220)
+                            Spacer(minLength: 0)
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(14)
+                .background(Theme.cardBG, in: RoundedRectangle(cornerRadius: Theme.Radius.sm, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: Theme.Radius.sm, style: .continuous).stroke(Theme.hairline))
+            } else {
+                Button { withAnimation(.easeOut(duration: 0.15)) { isRenamingSpeakers = true } } label: {
+                    Label("Rename speakers", systemImage: "person.crop.circle")
+                        .font(.geist(size: 12, weight: .medium)).foregroundStyle(Theme.accent)
+                }
+                .buttonStyle(.plain).pointingCursor()
+            }
+        }
+    }
+
+    private func nameBinding(for label: String) -> Binding<String> {
+        Binding(
+            get: { SpeakerNames.decode(conference.speakerNames)[label] ?? "" },
+            set: { newValue in
+                var map = SpeakerNames.decode(conference.speakerNames)
+                let trimmed = newValue.trimmingCharacters(in: .whitespaces)
+                if trimmed.isEmpty { map[label] = nil } else { map[label] = trimmed }
+                conference.speakerNames = SpeakerNames.encode(map)
+                try? modelContext.save()
+            })
     }
 
     private func commitTitle() {
@@ -197,14 +253,15 @@ private struct ConferenceDetail: View {
 /// non-labelled lines (e.g. a permission hint) as plain secondary text.
 private struct DiarizedTranscript: View {
     let text: String
+    var names: [String: String] = [:]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
             ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
                 if let turn = Self.parse(line) {
-                    (Text(turn.speaker + "  ")
+                    (Text((names[turn.speaker] ?? turn.speaker) + "  ")
                         .font(.geist(size: 14, weight: .semibold))
-                        .foregroundStyle(speakerColor(turn.speaker))
+                        .foregroundStyle(speakerColor(turn.speaker))   // colour by original label (stable)
                      + Text(turn.text)
                         .font(.geist(size: 14))
                         .foregroundStyle(Theme.primaryText))
@@ -297,5 +354,32 @@ private struct ConferenceAudioPlayer: View {
 
     private func fmt(_ t: Double) -> String {
         let s = Int(t.rounded()); return String(format: "%d:%02d", s / 60, s % 60)
+    }
+}
+
+/// Speaker-name helpers for diarized conferences: distinct labels in a transcript + the persisted
+/// label→name map (stored as JSON on `Conference.speakerNames`).
+enum SpeakerNames {
+    /// Distinct "Speaker:" labels in order of first appearance ("Я", "Собеседник 1", …).
+    static func labels(in transcript: String) -> [String] {
+        var seen = Set<String>(), ordered: [String] = []
+        for line in transcript.split(separator: "\n") {
+            guard let range = line.range(of: ": "), range.lowerBound != line.startIndex else { continue }
+            let label = String(line[line.startIndex..<range.lowerBound])
+            guard label.count <= 20, !label.contains(".") else { continue }
+            if seen.insert(label).inserted { ordered.append(label) }
+        }
+        return ordered
+    }
+
+    static func decode(_ json: String) -> [String: String] {
+        guard let data = json.data(using: .utf8),
+              let map = try? JSONDecoder().decode([String: String].self, from: data) else { return [:] }
+        return map
+    }
+
+    static func encode(_ map: [String: String]) -> String {
+        guard let data = try? JSONEncoder().encode(map) else { return "" }
+        return String(decoding: data, as: UTF8.self)
     }
 }
