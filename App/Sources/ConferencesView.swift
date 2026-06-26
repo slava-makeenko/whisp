@@ -95,23 +95,60 @@ private struct ConferenceRow: View {
 }
 
 private struct ConferenceDetail: View {
-    let conference: Conference
+    @Bindable var conference: Conference
     let onDelete: () -> Void
+    @Environment(\.modelContext) private var modelContext
+    @State private var isEditingTitle = false
+    @FocusState private var titleFocused: Bool
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(conference.title.isEmpty ? "Conference" : conference.title)
-                            .font(.geist(size: 20, weight: .semibold)).foregroundStyle(Theme.primaryText)
-                        Text(conference.createdAt, format: .dateTime.day().month().year().hour().minute())
-                            .font(.geist(size: 12)).foregroundStyle(Theme.secondaryText)
+                        HStack(spacing: 8) {
+                            if isEditingTitle {
+                                TextField("Conference", text: $conference.title)
+                                    .textFieldStyle(.plain)
+                                    .font(.geist(size: 20, weight: .semibold))
+                                    .foregroundStyle(Theme.primaryText)
+                                    .focused($titleFocused)
+                                    .onSubmit(commitTitle)
+                                    .padding(.horizontal, 8).padding(.vertical, 4)
+                                    .background(Theme.cardBG, in: RoundedRectangle(cornerRadius: Theme.Radius.xs, style: .continuous))
+                                    .overlay(RoundedRectangle(cornerRadius: Theme.Radius.xs, style: .continuous)
+                                        .stroke(Theme.accent, lineWidth: 1.5))
+                                Button(action: commitTitle) {
+                                    Image(systemName: "checkmark.circle.fill").font(.geist(size: 17)).foregroundStyle(Theme.accent)
+                                }
+                                .buttonStyle(.plain).pointingCursor().help("Done")
+                            } else {
+                                Text(conference.title.isEmpty ? "Conference" : conference.title)
+                                    .font(.geist(size: 20, weight: .semibold)).foregroundStyle(Theme.primaryText)
+                                Button { isEditingTitle = true } label: {
+                                    Image(systemName: "pencil").font(.geist(size: 13)).foregroundStyle(Theme.secondaryText)
+                                }
+                                .buttonStyle(.plain).pointingCursor().help("Rename")
+                            }
+                        }
+                        HStack(spacing: 6) {
+                            Text(conference.createdAt, format: .dateTime.day().month().year().hour().minute())
+                            if conference.durationMs > 0 { Text("·"); Text(durationText) }
+                        }
+                        .font(.geist(size: 12)).foregroundStyle(Theme.secondaryText)
                     }
                     Spacer()
+                    if !conference.transcript.isEmpty {
+                        Button(action: copyTranscript) { Image(systemName: "doc.on.doc").font(.geist(size: 13)) }
+                            .buttonStyle(.plain).foregroundStyle(Theme.secondaryText).pointingCursor()
+                            .help("Copy transcript")
+                    }
                     Button(action: onDelete) { Image(systemName: "trash").font(.geist(size: 13)) }
                         .buttonStyle(.plain).foregroundStyle(Theme.secondaryText).pointingCursor()
+                        .help("Delete")
                 }
+                .onChange(of: isEditingTitle) { _, editing in titleFocused = editing }
+                .onChange(of: titleFocused) { _, focused in if !focused { commitTitle() } }
 
                 if let url = conference.audioURL, FileManager.default.fileExists(atPath: url.path) {
                     ConferenceAudioPlayer(url: url)
@@ -133,6 +170,23 @@ private struct ConferenceDetail: View {
         .scrollContentBackground(.hidden)
         .background(Theme.windowBG)
         .id(conference.id)
+    }
+
+    private func commitTitle() {
+        guard isEditingTitle else { return }
+        isEditingTitle = false
+        try? modelContext.save()
+    }
+
+    private var durationText: String {
+        let total = conference.durationMs / 1000
+        let minutes = total / 60, seconds = total % 60
+        return minutes > 0 ? "\(minutes) min \(seconds) s" : "\(seconds) s"
+    }
+
+    private func copyTranscript() {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(conference.transcript, forType: .string)
     }
 }
 

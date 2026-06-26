@@ -111,6 +111,7 @@ struct WhispApp: App {
                     do {
                         result = try await URLSessionLLMEnhancer(apiKey: key)
                             .enhance(result, prompt: prompt, provider: provider.llmProvider(model: model))
+                        Log.asr.info("Cloud enhancement via \(provider.displayName, privacy: .public) (\(style.rawValue, privacy: .public))")
                     } catch {
                         // Keep the raw (dictionary-applied) text, but make the failure diagnosable.
                         Log.asr.error("Live cloud enhancement failed; using raw text: \(error.localizedDescription, privacy: .public)")
@@ -176,6 +177,7 @@ struct WhispApp: App {
                         do {
                             result = try await URLSessionLLMEnhancer(apiKey: key)
                                 .enhance(result, prompt: prompt, provider: provider.llmProvider(model: model))
+                            Log.asr.info("File-queue cloud enhancement via \(provider.displayName, privacy: .public)")
                         } catch {
                             Log.asr.error("File-queue cloud enhancement failed; using raw text: \(error.localizedDescription, privacy: .public)")
                         }
