@@ -42,6 +42,7 @@ struct SettingsView: View {
     @AppStorage("audioOutputDeviceUID") private var audioOutputDeviceUID = ""
     @AppStorage("forceLocalEnhancement") private var forceLocalEnhancement = false
     @State private var audioDevices = AudioDevicesModel()
+    @State private var micLevel = MicLevelMonitor()
     @State private var apiKey = ""
     @State private var licenseKey = ""
     @State private var testing = false
@@ -147,6 +148,10 @@ struct SettingsView: View {
                                                          selected: audioInputDeviceUID))
                 }
                 RowDivider()
+                SettingRow("Input level", description: "Live signal from the selected microphone — speak to test it.") {
+                    MicLevelMeter(level: micLevel.level)
+                }
+                RowDivider()
                 SettingRow("Output", description: "Where whisp plays its start / stop sound cues.") {
                     WispValueMenu(selection: $audioOutputDeviceUID,
                                   options: deviceOptions(audioDevices.outputs,
@@ -156,8 +161,9 @@ struct SettingsView: View {
             }
             CardCaption("System Default follows macOS — the active device is shown in the menu. Picking a specific device affects whisp only, not the system.")
         }
-        .onAppear { audioDevices.start() }
-        .onDisappear { audioDevices.stop() }
+        .onAppear { audioDevices.start(); micLevel.start() }
+        .onDisappear { audioDevices.stop(); micLevel.stop() }
+        .onChange(of: audioInputDeviceUID) { _, _ in micLevel.restart() }
     }
 
     /// `[(uid, name)]` for the device menu: a "System Default" row (showing the live default device),
@@ -624,6 +630,28 @@ private struct SettingRow<Control: View>: View {
 
 private struct RowDivider: View {
     var body: some View { Divider().overlay(Theme.hairline) }
+}
+
+/// Segmented input-level meter: lit segments track the live 0…1 level (accent → orange near the top).
+private struct MicLevelMeter: View {
+    let level: Float
+    private let segments = 14
+
+    var body: some View {
+        HStack(spacing: 3) {
+            ForEach(0..<segments, id: \.self) { i in
+                let threshold = Float(i + 1) / Float(segments)
+                let lit = level >= threshold
+                Capsule()
+                    // Unlit segments keep a faint visible track so the meter shows even in silence.
+                    .fill(lit ? (threshold > 0.85 ? Color.orange : Theme.accent)
+                              : Theme.primaryText.opacity(0.12))
+                    .frame(width: 6, height: 16)
+            }
+        }
+        .animation(.easeOut(duration: 0.08), value: level)
+        .help("Live microphone input level")
+    }
 }
 
 /// Wide pill toggle — adapts to light/dark: primaryText fill when on (dark in light, light in dark).

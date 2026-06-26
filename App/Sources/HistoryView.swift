@@ -89,12 +89,8 @@ private struct HistoryEntryRow: View {
         HStack(alignment: .top, spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(item.text).lineLimit(3).foregroundStyle(Theme.primaryText)
-                HStack(spacing: 6) {
-                    Text(item.createdAt, format: .dateTime.day().month().hour().minute())
-                    Text("·")
-                    Text(item.backend)
-                }
-                .font(.geist(size: 11)).foregroundStyle(Theme.secondaryText)
+                Text(item.createdAt, format: .dateTime.day().month().hour().minute())
+                    .font(.geist(size: 11)).foregroundStyle(Theme.secondaryText)
             }
             Spacer()
             if hovering {

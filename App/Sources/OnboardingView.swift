@@ -29,6 +29,13 @@ struct OnboardingView: View {
                 Button(onboarding.isComplete ? "Get Started" : "Continue") { onContinue() }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
+
+                Label("New here? Open Help in the sidebar for a quick guide — including how to connect a Groq key for smarter formatting.",
+                      systemImage: "questionmark.circle")
+                    .font(.geist(size: 12))
+                    .foregroundStyle(.white.opacity(0.55))
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 420)
                 Spacer()
             }
             .padding(40)

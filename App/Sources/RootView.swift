@@ -28,6 +28,7 @@ struct RootView: View {
     @EnvironmentObject private var updater: UpdaterController
     @AppStorage("accentColor") private var accentColor = "clay"
     @AppStorage("colorScheme") private var colorSchemeRaw = "system"
+    @AppStorage("didVisitHelp") private var didVisitHelp = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var preferredScheme: ColorScheme? {
@@ -110,8 +111,10 @@ struct RootView: View {
 
             SidebarRow(title: "Settings", symbol: "gearshape",
                        selected: selection == .settings) { selection = .settings }
-            SidebarRow(title: "Help", symbol: "questionmark.circle", selected: selection == .help) {
+            SidebarRow(title: "Help", symbol: "questionmark.circle",
+                       selected: selection == .help, badge: !didVisitHelp) {
                 selection = .help
+                didVisitHelp = true
             }
         }
         .padding(10)
@@ -202,6 +205,7 @@ private struct SidebarRow: View {
     let title: String
     let symbol: String
     let selected: Bool
+    var badge: Bool = false
     let action: () -> Void
     @State private var hovering = false
 
@@ -216,6 +220,9 @@ private struct SidebarRow: View {
                     .font(.geist(size: 14, weight: selected ? .semibold : .medium))
                     .foregroundStyle(selected ? Theme.primaryText : Theme.secondaryText)
                 Spacer(minLength: 0)
+                if badge {
+                    Circle().fill(Theme.accent).frame(width: 7, height: 7)
+                }
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
