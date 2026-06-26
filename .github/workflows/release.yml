@@ -20,7 +20,9 @@ concurrency:
 jobs:
   build-dmg:
     name: Build unsigned DMG + Sparkle appcast
-    runs-on: macos-15
+    # macOS 26 image ships Xcode 26 — required to compile the app's macOS 26 APIs
+    # (SpeechAnalyzer/SpeechTranscriber, etc.). The macos-15 image's SDK is too old → xcodebuild 65.
+    runs-on: macos-26
 
     env:
       SPARKLE_VERSION: 2.9.2
