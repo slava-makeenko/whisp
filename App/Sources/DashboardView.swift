@@ -14,6 +14,10 @@ struct DashboardView: View {
 
     @AppStorage("hotkeyKeyCode") private var hotkeyKeyCode = 49
     @AppStorage("hotkeyModifiers") private var hotkeyModifiers = HotkeyModifiers.option.rawValue
+    @AppStorage("conferenceHotkeyKeyCode") private var conferenceHotkeyKeyCode = 49
+    @AppStorage("conferenceHotkeyModifiers") private var conferenceHotkeyModifiers = HotkeyModifiers([.control, .option]).rawValue
+    @AppStorage("filePickerHotkeyKeyCode") private var filePickerHotkeyKeyCode = 31
+    @AppStorage("filePickerHotkeyModifiers") private var filePickerHotkeyModifiers = HotkeyModifiers([.command, .option]).rawValue
     @AppStorage("colorScheme") private var colorSchemeRaw = "system"
     @AppStorage("recentCollapsed") private var recentCollapsed = false
     @AppStorage("enhancementProvider") private var enhancementProviderID = "openai"
@@ -21,10 +25,11 @@ struct DashboardView: View {
 
     @State private var dropTargeted = false
     @State private var recordHovering = false
-    @State private var heroPulse = false
     @State private var axTrusted = AXIsProcessTrusted()
     @State private var cloudKeyConfigured = false
+    @State private var spotlightIndex = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    private let spotlightTimer = Timer.publish(every: 6, on: .main, in: .common).autoconnect()
 
     private var summary: MetricsSummary { MetricsSummary.from(metrics) }
     private var totalWords: Int {
@@ -53,6 +58,7 @@ struct DashboardView: View {
                     VStack(spacing: 16) {
                         statsPanel
                         enhancementCard
+                        hotkeysCard
                     }
                     .frame(width: 268)
                 }
@@ -65,7 +71,7 @@ struct DashboardView: View {
         }
         .scrollContentBackground(.hidden)
         .background(Theme.windowBG)
-        .onAppear { heroPulse = true; refreshCloudKey() }
+        .onAppear { refreshCloudKey() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             axTrusted = AXIsProcessTrusted()
             refreshCloudKey()
@@ -77,20 +83,11 @@ struct DashboardView: View {
 
     private var greetingRow: some View {
         HStack(alignment: .center, spacing: 10) {
-            Text("Hey \(firstName), get back into the flow with")
+            Text("Hey \(firstName), get back into the flow")
                 .font(.geist(size: 22, weight: .semibold))
                 .kerning(-0.3)
                 .foregroundStyle(Theme.primaryText)
                 .fixedSize(horizontal: false, vertical: true)
-
-            HStack(spacing: 6) {
-                ForEach(Array(hotkeyKeycaps.enumerated()), id: \.offset) { idx, cap in
-                    if idx > 0 {
-                        Text("+").font(.geist(size: 13, weight: .medium)).foregroundStyle(Theme.mutedText)
-                    }
-                    HotkeyChip(label: cap)
-                }
-            }
 
             Spacer(minLength: 12)
 
@@ -180,61 +177,98 @@ struct DashboardView: View {
     }
 
     /// Hotkey rendered as individual keycaps (modifiers then key).
-    private var hotkeyKeycaps: [String] {
-        let mods = HotkeyModifiers(rawValue: hotkeyModifiers)
+    private static func keycaps(keyCode: Int, modifiers: Int) -> [String] {
+        let mods = HotkeyModifiers(rawValue: modifiers)
         var caps: [String] = []
-        if hotkeyKeyCode < 0 {
+        if keyCode < 0 {
             // Modifier-only (double-tap) hotkey
             if mods.contains(.fn)      { caps.append("fn") }
             if mods.contains(.command) { caps.append("⌘") }
             if mods.contains(.option)  { caps.append("⌥") }
             if mods.contains(.control) { caps.append("⌃") }
-            return caps.isEmpty ? ["⌥", "Space"] : caps
+            return caps.isEmpty ? ["fn"] : caps
         }
         if mods.contains(.control) { caps.append("⌃") }
         if mods.contains(.option)  { caps.append("⌥") }
         if mods.contains(.command) { caps.append("⌘") }
-        caps.append(hotkeyKeyCode == 49 ? "Space" : "·")
+        caps.append(KeyNames.name(for: keyCode))
         return caps
     }
 
+    private var hotkeyKeycaps: [String] { Self.keycaps(keyCode: hotkeyKeyCode, modifiers: hotkeyModifiers) }
     private var hotkeyInline: String { hotkeyKeycaps.joined(separator: " ") }
 
-    // MARK: - Hero
+    // MARK: - Hero (rotating feature spotlight)
+
+    private struct Spotlight: Identifiable {
+        let id: String
+        let icon: String
+        let title: LocalizedStringKey
+        let subtitle: LocalizedStringKey
+        let cta: LocalizedStringKey
+        let notification: Notification.Name
+    }
+
+    /// Rotating promos for the core features — always something useful in the prime banner slot.
+    private var spotlights: [Spotlight] {
+        var items: [Spotlight] = [
+            Spotlight(id: "conference", icon: "person.2.wave.2", title: "Record your meetings",
+                      subtitle: "Capture your mic and the call's audio, with speaker labels.",
+                      cta: "Open Conference", notification: .whispOpenConference),
+            Spotlight(id: "files", icon: "doc.text", title: "Transcribe audio & video",
+                      subtitle: "Drop a file on Home — the transcript lands in Files.",
+                      cta: "Open Files", notification: .whispOpenFiles),
+            Spotlight(id: "dictate", icon: "mic.fill", title: "Dictate anywhere",
+                      subtitle: "Press \(hotkeyInline) to type with your voice in any app.",
+                      cta: "Shortcuts", notification: .whispOpenSettings),
+            Spotlight(id: "power", icon: "wand.and.stars", title: "Make whisp sound like you",
+                      subtitle: "Give each app its own writing style.",
+                      cta: "Set up", notification: .whispOpenPowerMode),
+        ]
+        if !cloudKeyConfigured {
+            items.append(Spotlight(id: "groq", icon: "cloud.fill", title: "Smarter formatting",
+                                   subtitle: "Connect a key for Email, Message & Code modes.",
+                                   cta: "Open Settings", notification: .whispOpenSettings))
+        }
+        return items
+    }
 
     private var heroCard: some View {
-        Button {
-            NotificationCenter.default.post(name: .whispOpenPowerMode, object: nil)
+        let items = spotlights
+        let item = items[min(spotlightIndex, items.count - 1)]
+        return Button {
+            NotificationCenter.default.post(name: item.notification, object: nil)
         } label: {
-            HStack(alignment: .center, spacing: 16) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Make whisp sound like you")
-                        .font(.geist(size: 26, weight: .semibold))
-                        .kerning(-0.4)
-                        .foregroundStyle(.white)
-                    Text("Set up different writing styles for different apps.")
-                        .font(.geist(size: 14))
-                        .foregroundStyle(.white.opacity(0.72))
-
-                    HStack(spacing: 7) {
-                        ZStack {
-                            Circle().fill(Color(Fluid.peach300)).frame(width: 7, height: 7)
-                            Circle().stroke(Color(Fluid.peach300).opacity(0.6), lineWidth: 2)
-                                .frame(width: 7, height: 7)
-                                .scaleEffect(heroPulse && !reduceMotion ? 2.4 : 1)
-                                .opacity(heroPulse && !reduceMotion ? 0 : 0.8)
-                                .animation(reduceMotion ? nil : .easeInOut(duration: 2.4).repeatForever(autoreverses: false),
-                                           value: heroPulse)
+            ZStack(alignment: .bottomTrailing) {
+                HStack(alignment: .center, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Label(item.title, systemImage: item.icon)
+                            .labelStyle(.titleOnly)
+                            .font(.geist(size: 26, weight: .semibold)).kerning(-0.4)
+                            .foregroundStyle(.white)
+                        Text(item.subtitle)
+                            .font(.geist(size: 14)).foregroundStyle(.white.opacity(0.72))
+                        HStack(spacing: 7) {
+                            Image(systemName: item.icon).font(.geist(size: 11, weight: .semibold))
+                            Text(item.cta).font(.geist(size: 13, weight: .semibold))
                         }
-                        Text("Start now")
-                            .font(.geist(size: 13, weight: .semibold))
-                            .foregroundStyle(Color(Fluid.ink))
+                        .foregroundStyle(Color(Fluid.ink))
+                        .padding(.horizontal, 14).padding(.vertical, 8)
+                        .background(.white, in: Capsule())
+                        .padding(.top, 6)
                     }
-                    .padding(.horizontal, 14).padding(.vertical, 8)
-                    .background(.white, in: Capsule())
-                    .padding(.top, 6)
+                    Spacer(minLength: 0)
                 }
-                Spacer(minLength: 0)
+                .id(item.id)
+                .transition(.opacity)
+
+                // Page dots
+                HStack(spacing: 5) {
+                    ForEach(Array(items.enumerated()), id: \.element.id) { idx, _ in
+                        Circle().fill(.white.opacity(idx == spotlightIndex ? 0.95 : 0.35))
+                            .frame(width: 6, height: 6)
+                    }
+                }
             }
             .padding(24)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -244,6 +278,11 @@ struct DashboardView: View {
         }
         .buttonStyle(HeroButtonStyle())
         .pointingCursor()
+        .animation(.easeInOut(duration: 0.4), value: spotlightIndex)
+        .onReceive(spotlightTimer) { _ in
+            guard !reduceMotion else { return }
+            withAnimation { spotlightIndex = (spotlightIndex + 1) % items.count }
+        }
     }
 
     // MARK: - Live recording feedback
@@ -621,6 +660,35 @@ struct DashboardView: View {
                 }
         }
         .buttonStyle(.plain).pointingCursor()
+    }
+
+    // MARK: - Hotkeys hint
+
+    private var hotkeysCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 7) {
+                Image(systemName: "command").font(.geist(size: 12)).foregroundStyle(Theme.accent)
+                Text("Shortcuts").font(.geist(size: 13, weight: .semibold)).foregroundStyle(Theme.primaryText)
+            }
+            hotkeyHintRow("Dictate", caps: hotkeyKeycaps)
+            hotkeyHintRow("Record meeting", caps: Self.keycaps(keyCode: conferenceHotkeyKeyCode, modifiers: conferenceHotkeyModifiers))
+            hotkeyHintRow("Attach file", caps: Self.keycaps(keyCode: filePickerHotkeyKeyCode, modifiers: filePickerHotkeyModifiers))
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .wispCard(padding: 16)
+    }
+
+    private func hotkeyHintRow(_ label: LocalizedStringKey, caps: [String]) -> some View {
+        HStack(spacing: 8) {
+            Text(label).font(.geist(size: 12)).foregroundStyle(Theme.secondaryText)
+            Spacer(minLength: 8)
+            HStack(spacing: 4) {
+                ForEach(Array(caps.enumerated()), id: \.offset) { idx, cap in
+                    if idx > 0 { Text("+").font(.geist(size: 10)).foregroundStyle(Theme.mutedText) }
+                    HotkeyChip(label: cap)
+                }
+            }
+        }
     }
 
     // MARK: - Accessibility banner

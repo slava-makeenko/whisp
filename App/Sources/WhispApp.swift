@@ -25,6 +25,8 @@ struct WhispApp: App {
     @AppStorage("hotkeyMode") private var hotkeyMode = HotkeyMode.toggle
     @AppStorage("conferenceHotkeyKeyCode") private var conferenceHotkeyKeyCode = 49
     @AppStorage("conferenceHotkeyModifiers") private var conferenceHotkeyModifiers = HotkeyModifiers([.control, .option]).rawValue
+    @AppStorage("filePickerHotkeyKeyCode") private var filePickerHotkeyKeyCode = 31   // O
+    @AppStorage("filePickerHotkeyModifiers") private var filePickerHotkeyModifiers = HotkeyModifiers([.command, .option]).rawValue
     @AppStorage("trimSilence") private var trimSilence = true
     @AppStorage("autoStopOnSilence") private var autoStopOnSilence = false
     @AppStorage("transcriptionEngine") private var transcriptionEngine = "auto"
@@ -41,6 +43,8 @@ struct WhispApp: App {
     private let modifierMonitor = ModifierTapMonitor()
     private let conferenceHotkeys = CarbonHotkeyMonitor(id: 2)
     private let conferenceModifierMonitor = ModifierTapMonitor()
+    private let filePickerHotkeys = CarbonHotkeyMonitor(id: 3)
+    private let filePickerModifierMonitor = ModifierTapMonitor()
     private let notchRecorder = NotchRecorderController()
     private let contextProvider = WorkspaceContextProvider()
     // Held as properties so they stay alive during async playback.
@@ -221,37 +225,48 @@ struct WhispApp: App {
     private var appAccent: Color { (AccentPalette(rawValue: accentColor) ?? .clay).color }
     private var appFontDesign: Font.Design { (AppFontStyle(rawValue: fontStyle) ?? .system).design }
 
+    @ViewBuilder private var baseRoot: some View {
+        RootView()
+            .environmentObject(updaterController)
+            .environment(controller)
+            .environment(conferenceController)
+            .environment(fileQueueModel)
+            .environment(modelStore)
+            .environment(\.locale, appLocale)
+            .modelContainer(container)
+            .task { await startHotkeys() }
+            .task { await startContext() }
+            .task { fileQueueModel.modelContainer = container; await fileQueueModel.start() }
+            .task { await startConferenceHotkeys() }
+            .task { await startFilePickerHotkey() }
+            .sheet(isPresented: .init(get: { !didOnboard }, set: { if !$0 { didOnboard = true } })) {
+                OnboardingView { didOnboard = true }
+                    .environment(onboarding)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .whispToggleDictation)) { _ in
+                controller.toggle()
+            }
+    }
+
+    @ViewBuilder private var mainRoot: some View {
+        baseRoot
+            .onChange(of: dictationLanguages, initial: true) { _, _ in applyTranscriptionOptions() }
+            .onChange(of: trimSilence) { applyTranscriptionOptions() }
+            .onChange(of: autoStopOnSilence) { applyTranscriptionOptions() }
+            .onChange(of: transcriptionEngine) { applyTranscriptionOptions() }
+            .onChange(of: commandModeEnabled) { controller.commandModeEnabled = commandModeEnabled }
+            .onChange(of: hotkeyKeyCode) { applyHotkey() }
+            .onChange(of: hotkeyModifiers) { applyHotkey() }
+            .onChange(of: hotkeyMode) { applyHotkey(); applyTranscriptionOptions() }   // re-evaluate auto-stop gating
+            .onChange(of: conferenceHotkeyKeyCode) { applyConferenceHotkey() }
+            .onChange(of: conferenceHotkeyModifiers) { applyConferenceHotkey() }
+            .onChange(of: filePickerHotkeyKeyCode) { applyFilePickerHotkey() }
+            .onChange(of: filePickerHotkeyModifiers) { applyFilePickerHotkey() }
+    }
+
     var body: some Scene {
         Window("whisp", id: "main") {
-            RootView()
-                .environmentObject(updaterController)
-                .environment(controller)
-                .environment(conferenceController)
-                .environment(fileQueueModel)
-                .environment(modelStore)
-                .environment(\.locale, appLocale)
-                .modelContainer(container)
-                .task { await startHotkeys() }
-                .task { await startContext() }
-                .task { fileQueueModel.modelContainer = container; await fileQueueModel.start() }
-                .task { await startConferenceHotkeys() }
-                .sheet(isPresented: .init(get: { !didOnboard }, set: { if !$0 { didOnboard = true } })) {
-                    OnboardingView { didOnboard = true }
-                        .environment(onboarding)
-                }
-                .onReceive(NotificationCenter.default.publisher(for: .whispToggleDictation)) { _ in
-                    controller.toggle()
-                }
-                .onChange(of: dictationLanguages, initial: true) { _, _ in applyTranscriptionOptions() }
-                .onChange(of: trimSilence) { applyTranscriptionOptions() }
-                .onChange(of: autoStopOnSilence) { applyTranscriptionOptions() }
-                .onChange(of: transcriptionEngine) { applyTranscriptionOptions() }
-                .onChange(of: commandModeEnabled) { controller.commandModeEnabled = commandModeEnabled }
-                .onChange(of: hotkeyKeyCode) { applyHotkey() }
-                .onChange(of: hotkeyModifiers) { applyHotkey() }
-                .onChange(of: hotkeyMode) { applyHotkey(); applyTranscriptionOptions() }   // re-evaluate auto-stop gating
-                .onChange(of: conferenceHotkeyKeyCode) { applyConferenceHotkey() }
-                .onChange(of: conferenceHotkeyModifiers) { applyConferenceHotkey() }
+            mainRoot
         }
         .windowStyle(.hiddenTitleBar)
         .commands {
@@ -318,6 +333,41 @@ struct WhispApp: App {
             conferenceModifierMonitor.stop()
             let binding = HotkeyBinding(keyCode: UInt16(conferenceHotkeyKeyCode), modifiers: mods)
             try? conferenceHotkeys.start(binding, mode: .toggle)
+        }
+    }
+
+    private func startFilePickerHotkey() async {
+        applyFilePickerHotkey()
+        for await event in filePickerHotkeys.events where event == .toggle {
+            presentFilePicker()
+        }
+    }
+
+    /// Global hotkey to attach an audio/video file for transcription (toggle = fire on press).
+    private func applyFilePickerHotkey() {
+        let mods = HotkeyModifiers(rawValue: filePickerHotkeyModifiers)
+        if filePickerHotkeyKeyCode < 0 {
+            filePickerHotkeys.stop()
+            filePickerModifierMonitor.onEvent = { event in if event == .toggle { Task { @MainActor in self.presentFilePicker() } } }
+            filePickerModifierMonitor.start(modifier: mods, mode: .toggle)
+        } else {
+            filePickerModifierMonitor.stop()
+            let binding = HotkeyBinding(keyCode: UInt16(filePickerHotkeyKeyCode), modifiers: mods)
+            try? filePickerHotkeys.start(binding, mode: .toggle)
+        }
+    }
+
+    /// Opens a Finder file picker for audio/video and enqueues the chosen files for transcription.
+    @MainActor private func presentFilePicker() {
+        NSApp.activate(ignoringOtherApps: true)
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = false
+        panel.allowedContentTypes = [.audio, .mpeg4Audio, .mp3, .wav, .aiff, .movie, .video, .mpeg4Movie, .quickTimeMovie]
+        panel.prompt = "Transcribe"
+        if panel.runModal() == .OK, !panel.urls.isEmpty {
+            fileQueueModel.enqueue(panel.urls)
+            NotificationCenter.default.post(name: .whispOpenFiles, object: nil)
         }
     }
 

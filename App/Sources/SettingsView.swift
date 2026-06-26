@@ -34,6 +34,8 @@ struct SettingsView: View {
     @AppStorage("hotkeyMode") private var hotkeyMode = HotkeyMode.toggle
     @AppStorage("conferenceHotkeyKeyCode") private var conferenceHotkeyKeyCode = 49
     @AppStorage("conferenceHotkeyModifiers") private var conferenceHotkeyModifiers = HotkeyModifiers([.control, .option]).rawValue
+    @AppStorage("filePickerHotkeyKeyCode") private var filePickerHotkeyKeyCode = 31
+    @AppStorage("filePickerHotkeyModifiers") private var filePickerHotkeyModifiers = HotkeyModifiers([.command, .option]).rawValue
     @AppStorage("trimSilence") private var trimSilence = true
     @AppStorage("autoStopOnSilence") private var autoStopOnSilence = false
     @AppStorage("playSoundCues") private var playSoundCues = true
@@ -41,6 +43,8 @@ struct SettingsView: View {
     @AppStorage("audioInputDeviceUID") private var audioInputDeviceUID = ""
     @AppStorage("audioOutputDeviceUID") private var audioOutputDeviceUID = ""
     @AppStorage("forceLocalEnhancement") private var forceLocalEnhancement = false
+    @AppStorage("conferenceMode") private var conferenceMode = "duo"
+    @AppStorage("didOnboard") private var didOnboard = false
     @State private var audioDevices = AudioDevicesModel()
     @State private var micLevel = MicLevelMonitor()
     @State private var apiKey = ""
@@ -160,6 +164,33 @@ struct SettingsView: View {
                 }
             }
             CardCaption("System Default follows macOS — the active device is shown in the menu. Picking a specific device affects whisp only, not the system.")
+
+            Text("CONFERENCE TRANSCRIPTION")
+                .font(.geist(size: 11, weight: .semibold)).foregroundStyle(Theme.secondaryText)
+                .padding(.top, 6)
+            SettingsGroup {
+                ForEach(Array(ConferenceMode.allCases.enumerated()), id: \.element.id) { index, mode in
+                    if index > 0 { RowDivider() }
+                    Button { conferenceMode = mode.rawValue } label: {
+                        HStack(alignment: .top, spacing: 12) {
+                            Image(systemName: conferenceMode == mode.rawValue ? "largecircle.fill.circle" : "circle")
+                                .font(.geist(size: 15))
+                                .foregroundStyle(conferenceMode == mode.rawValue ? Theme.accent : Theme.secondaryText)
+                                .padding(.top, 1)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(mode.title).font(.geist(size: 15, weight: .semibold)).foregroundStyle(Theme.primaryText)
+                                Text(mode.hint).font(.geist(size: 13)).foregroundStyle(Theme.secondaryText)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            Spacer(minLength: 0)
+                        }
+                        .padding(.vertical, 12)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain).pointingCursor()
+                }
+            }
+            CardCaption("Applies to the next conference you transcribe. Switching to Speakers downloads small on-device diarization models the first time.")
         }
         .onAppear { audioDevices.start(); micLevel.start() }
         .onDisappear { audioDevices.stop(); micLevel.stop() }
@@ -192,6 +223,10 @@ struct SettingsView: View {
                 RowDivider()
                 SettingRow("Conference hotkey", description: "Start/stop recording a meeting (mic + system audio).") {
                     ShortcutField(keyCode: $conferenceHotkeyKeyCode, modifiers: $conferenceHotkeyModifiers)
+                }
+                RowDivider()
+                SettingRow("Attach file hotkey", description: "Open Finder to pick an audio/video file to transcribe.") {
+                    ShortcutField(keyCode: $filePickerHotkeyKeyCode, modifiers: $filePickerHotkeyModifiers)
                 }
                 RowDivider()
                 SettingRow("Engine", description: "On-device speech-recognition model.") {
@@ -436,6 +471,11 @@ struct SettingsView: View {
 
     private var dataContent: some View {
         VStack(alignment: .leading, spacing: 22) {
+            SettingsGroup {
+                SettingRow("Welcome guide", description: "Replay the onboarding — permissions, mic check, and a tour of the features.") {
+                    Button("Show again") { didOnboard = false }.buttonStyle(WisprButtonStyle())
+                }
+            }
             SettingsGroup {
                 SettingRow("Export settings", description: "Save your preferences to a file. API keys and the license are never exported.") {
                     Button("Export…", action: exportSettings).buttonStyle(WisprButtonStyle())

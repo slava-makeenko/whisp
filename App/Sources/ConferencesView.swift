@@ -201,7 +201,7 @@ private struct DiarizedTranscript: View {
                 if let turn = Self.parse(line) {
                     (Text(turn.speaker + "  ")
                         .font(.geist(size: 14, weight: .semibold))
-                        .foregroundStyle(turn.isMe ? Theme.accent : Theme.primaryText)
+                        .foregroundStyle(speakerColor(turn.speaker))
                      + Text(turn.text)
                         .font(.geist(size: 14))
                         .foregroundStyle(Theme.primaryText))
@@ -221,12 +221,22 @@ private struct DiarizedTranscript: View {
 
     private var lines: [String] { text.split(separator: "\n").map(String.init) }
 
-    private static func parse(_ line: String) -> (speaker: String, text: String, isMe: Bool)? {
-        for (label, isMe) in [("Я", true), ("Собеседник", false)] {
-            let prefix = label + ": "
-            if line.hasPrefix(prefix) { return (label, String(line.dropFirst(prefix.count)), isMe) }
-        }
-        return nil
+    /// A "Speaker: text" line — any speaker label ("Я", "Собеседник 1", …), not a fixed set.
+    private static func parse(_ line: String) -> (speaker: String, text: String)? {
+        guard let range = line.range(of: ": "), range.lowerBound != line.startIndex else { return nil }
+        let speaker = String(line[line.startIndex..<range.lowerBound])
+        // Guard against false positives (a colon deep in a sentence): labels are short.
+        guard speaker.count <= 20, !speaker.contains(".") else { return nil }
+        return (speaker, String(line[range.upperBound...]))
+    }
+
+    /// "Я" is the accent; each remote speaker gets a stable colour so participants are easy to tell apart.
+    private func speakerColor(_ speaker: String) -> Color {
+        if speaker == "Я" { return Theme.accent }
+        let palette: [Color] = [.blue, .green, .purple, .pink, .teal, .indigo, .brown]
+        // Derive a stable index from the trailing number ("Собеседник 2" → 2), else hash the label.
+        let n = Int(speaker.split(separator: " ").last ?? "") ?? abs(speaker.hashValue)
+        return palette[(max(1, n) - 1) % palette.count]
     }
 }
 

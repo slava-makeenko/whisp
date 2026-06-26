@@ -79,6 +79,9 @@ struct RootView: View {
         .onReceive(NotificationCenter.default.publisher(for: .whispOpenFiles)) { _ in
             selection = .files
         }
+        .onReceive(NotificationCenter.default.publisher(for: .whispOpenConference)) { _ in
+            selection = .conference
+        }
         .overlay(alignment: .bottomTrailing) {
             Text(appVersion)
                 .font(.geist(size: 11))
