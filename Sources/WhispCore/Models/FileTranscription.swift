@@ -16,6 +16,8 @@ public final class FileTranscription {
     /// removes the attached file (the transcript stays).
     public var storedFileName: String = ""
     public var wordCount: Int = 0
+    /// AI summary of the transcript (empty until generated). Default keeps lightweight migration.
+    public var summary: String = ""
 
     public init() {}
 

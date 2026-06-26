@@ -160,6 +160,9 @@ private struct ConferenceDetail: View {
                         Text("Transcribing…").font(.geist(size: 13)).foregroundStyle(Theme.secondaryText)
                     }
                 } else {
+                    TranscriptSummaryView(transcript: conference.transcript, summary: $conference.summary) {
+                        try? modelContext.save()
+                    }
                     DiarizedTranscript(text: conference.transcript)
                 }
             }

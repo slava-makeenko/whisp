@@ -99,6 +99,9 @@ private struct FileDetail: View {
                 if file.transcript.isEmpty {
                     Text("No transcript.").font(.geist(size: 13)).foregroundStyle(Theme.secondaryText)
                 } else {
+                    TranscriptSummaryView(transcript: file.transcript, summary: $file.summary) {
+                        try? modelContext.save()
+                    }
                     Text(file.transcript)
                         .textSelection(.enabled)
                         .font(.geist(size: 14)).foregroundStyle(Theme.primaryText)

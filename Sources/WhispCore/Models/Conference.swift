@@ -15,6 +15,8 @@ public final class Conference {
     public var durationMs: Int = 0
     public var sourceAppBundleID: String?
     public var wordCount: Int = 0
+    /// AI summary of the transcript (empty until generated). Default keeps lightweight migration.
+    public var summary: String = ""
 
     public init() {}
 
