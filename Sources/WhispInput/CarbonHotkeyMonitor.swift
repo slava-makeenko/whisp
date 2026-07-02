@@ -40,8 +40,18 @@ public final class CarbonHotkeyMonitor: HotkeyMonitor, @unchecked Sendable {
         ]
         let callback: EventHandlerUPP = { _, eventRef, userData in
             guard let userData, let eventRef else { return noErr }
-            Unmanaged<CarbonHotkeyMonitor>.fromOpaque(userData).takeUnretainedValue()
-                .handle(pressed: GetEventKind(eventRef) == UInt32(kEventHotKeyPressed))
+            // Every monitor's handler hangs off the same application target and sees EVERY hotkey
+            // event, in reverse install order. Handle only OUR id and pass foreign ones down the
+            // chain — otherwise the last-installed monitor swallows all the app's hotkeys.
+            var firedID = EventHotKeyID()
+            let status = GetEventParameter(eventRef, EventParamName(kEventParamDirectObject),
+                                           EventParamType(typeEventHotKeyID), nil,
+                                           MemoryLayout<EventHotKeyID>.size, nil, &firedID)
+            let monitor = Unmanaged<CarbonHotkeyMonitor>.fromOpaque(userData).takeUnretainedValue()
+            guard status == noErr,
+                  firedID.signature == OSType(0x56_49_4E_4B),
+                  firedID.id == monitor.hotKeyID else { return OSStatus(eventNotHandledErr) }
+            monitor.handle(pressed: GetEventKind(eventRef) == UInt32(kEventHotKeyPressed))
             return noErr
         }
         InstallEventHandler(GetApplicationEventTarget(), callback, eventTypes.count, &eventTypes,
