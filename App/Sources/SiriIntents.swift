@@ -9,6 +9,10 @@ extension Notification.Name {
     /// Posted with a `FileTranscription.id` (UUID) as `object` to open the Files tab on that record.
     static let whispOpenFiles       = Notification.Name("com.slavamakeenko.whisp.openFiles")
     static let whispOpenConference  = Notification.Name("com.slavamakeenko.whisp.openConference")
+    /// Posted while a ShortcutField is capturing, so the app suspends its global hotkeys — otherwise
+    /// an already-registered combo is consumed by Carbon and can never be re-captured.
+    static let whispHotkeyCaptureBegan = Notification.Name("com.slavamakeenko.whisp.hotkeyCaptureBegan")
+    static let whispHotkeyCaptureEnded = Notification.Name("com.slavamakeenko.whisp.hotkeyCaptureEnded")
 }
 
 /// Siri / Shortcuts action that toggles dictation in the running app via a notification.

@@ -43,6 +43,9 @@ struct ShortcutField: View {
     private func startRecording() {
         recording = true
         pendingModifier = nil
+        // Suspend the app's registered hotkeys: Carbon consumes a registered combo system-wide, so
+        // without this the combo being (re)captured never reaches our keyDown monitor.
+        NotificationCenter.default.post(name: .whispHotkeyCaptureBegan, object: nil)
         monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { event in
             switch event.type {
             case .keyDown:
@@ -53,9 +56,14 @@ struct ShortcutField: View {
                 stopRecording()
                 return nil   // swallow the captured event
             case .flagsChanged:
-                // Bare modifier: remember on press; if released with no key, capture as modifier-only.
-                if let single = singleModifier(event.modifierFlags) {
-                    pendingModifier = single
+                // Modifier-only capture: remember a lone modifier on press, commit it only when
+                // EVERYTHING is released. Adding more modifiers must not commit early — the user is
+                // building a multi-modifier combo (e.g. ⌃⌥Space), captured by the .keyDown branch.
+                let held = heldModifiers(event.modifierFlags)
+                if held.count == 1 {
+                    pendingModifier = held[0]
+                } else if held.count > 1 {
+                    pendingModifier = nil   // combo in progress — wait for the key
                 } else if let pending = pendingModifier {
                     keyCode = -1
                     modifiers = pending.rawValue
@@ -69,10 +77,14 @@ struct ShortcutField: View {
     }
 
     private func stopRecording() {
+        let wasRecording = recording
         if let monitor { NSEvent.removeMonitor(monitor) }
         monitor = nil
         recording = false
         pendingModifier = nil
+        if wasRecording {
+            NotificationCenter.default.post(name: .whispHotkeyCaptureEnded, object: nil)
+        }
     }
 
     private func mapFlags(_ flags: NSEvent.ModifierFlags) -> Int {
@@ -85,15 +97,15 @@ struct ShortcutField: View {
         return mods.rawValue
     }
 
-    /// Returns the single modifier if exactly one of fn/⌃/⌥/⇧/⌘ is held, else nil.
-    private func singleModifier(_ flags: NSEvent.ModifierFlags) -> HotkeyModifiers? {
+    /// The fn/⌃/⌥/⇧/⌘ modifiers currently held.
+    private func heldModifiers(_ flags: NSEvent.ModifierFlags) -> [HotkeyModifiers] {
         var present: [HotkeyModifiers] = []
         if flags.contains(.command)  { present.append(.command) }
         if flags.contains(.option)   { present.append(.option) }
         if flags.contains(.control)  { present.append(.control) }
         if flags.contains(.shift)    { present.append(.shift) }
         if flags.contains(.function) { present.append(.fn) }
-        return present.count == 1 ? present.first : nil
+        return present
     }
 }
 

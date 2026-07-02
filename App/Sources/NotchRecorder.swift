@@ -79,13 +79,15 @@ final class NotchRecorderController {
                 styleMask: [.borderless, .nonactivatingPanel],
                 backing: .buffered, defer: false)
             panel.isFloatingPanel = true
-            panel.level = .statusBar
+            // .screenSaver, not .statusBar: status-bar-level windows hide together with the menu bar
+            // when an app goes fullscreen — the pill must stay visible over fullscreen/Stage Manager.
+            panel.level = .screenSaver
             panel.backgroundColor = .clear
             panel.isOpaque = false
             panel.hasShadow = false
             panel.ignoresMouseEvents = true
             panel.hidesOnDeactivate = false
-            panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
+            panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
             panel.alphaValue = 0
             self.panel = panel
         }

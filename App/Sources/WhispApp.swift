@@ -246,6 +246,12 @@ struct WhispApp: App {
             .onReceive(NotificationCenter.default.publisher(for: .whispToggleDictation)) { _ in
                 controller.toggle()
             }
+            .onReceive(NotificationCenter.default.publisher(for: .whispHotkeyCaptureBegan)) { _ in
+                suspendHotkeysForCapture()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .whispHotkeyCaptureEnded)) { _ in
+                applyHotkey(); applyConferenceHotkey(); applyFilePickerHotkey()
+            }
     }
 
     @ViewBuilder private var mainRoot: some View {
@@ -310,6 +316,15 @@ struct WhispApp: App {
             let binding = HotkeyBinding(keyCode: UInt16(hotkeyKeyCode), modifiers: mods)
             try? hotkeys.start(binding, mode: hotkeyMode)
         }
+    }
+
+    /// While a ShortcutField records, our own registered hotkeys would swallow the very combo being
+    /// captured (Carbon consumes registered combos before they reach keyDown) — release them all;
+    /// the capture-ended notification re-applies every hotkey from its stored values.
+    private func suspendHotkeysForCapture() {
+        hotkeys.stop(); modifierMonitor.stop()
+        conferenceHotkeys.stop(); conferenceModifierMonitor.stop()
+        filePickerHotkeys.stop(); filePickerModifierMonitor.stop()
     }
 
     private func startConferenceHotkeys() async {

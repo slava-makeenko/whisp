@@ -30,7 +30,8 @@ enum TranscriptSummarizer {
     items as concise bullets. No preamble. Reply in the transcript's language.
     """
 
-    static func summarize(_ transcript: String) async throws -> String {
+    static func summarize(_ transcript: String,
+                          progress: (@MainActor @Sendable (String) -> Void)? = nil) async throws -> String {
         let text = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { throw SummarizerError.emptyTranscript }
 
@@ -41,26 +42,46 @@ enum TranscriptSummarizer {
         }
         let enhancer = URLSessionLLMEnhancer(apiKey: key)
         let llmProvider = provider.llmProvider(model: defaults.string(forKey: "enhancementModel") ?? "")
-        func call(_ input: String, _ system: String) async throws -> String {
-            try await enhancer.enhance(input, prompt: system, provider: llmProvider)
-                .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        /// One LLM call with rate-limit handling: a long meeting fires many requests in a row, which
+        /// trips per-minute token limits (Groq free tier: HTTP 429). Back off and retry so the whole
+        /// map-reduce survives instead of dying mid-way.
+        func call(_ input: String, _ system: String, label: String) async throws -> String {
+            var attempt = 0
+            while true {
+                if let progress { await progress(label) }
+                do {
+                    return try await enhancer.enhance(input, prompt: system, provider: llmProvider)
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                } catch LLMError.badResponse(let code) where (code == 429 || code >= 500) && attempt < 5 {
+                    attempt += 1
+                    let delay = min(90, 20 * attempt)   // rate-limit windows are per-minute
+                    if let progress { await progress("\(label) — provider busy, retrying in \(delay)s…") }
+                    try await Task.sleep(for: .seconds(Double(delay)))
+                }
+            }
         }
 
         // Short transcript → one shot.
-        if text.count <= chunkBudget { return try await call(text, finalPrompt) }
+        if text.count <= chunkBudget { return try await call(text, finalPrompt, label: "Summarizing…") }
 
         // Map: summarize each chunk into partial notes.
+        let parts = chunks(of: text)
         var notes: [String] = []
-        for chunk in chunks(of: text) { notes.append(try await call(chunk, chunkPrompt)) }
+        for (index, chunk) in parts.enumerated() {
+            notes.append(try await call(chunk, chunkPrompt, label: "Part \(index + 1) of \(parts.count)…"))
+        }
 
         // Reduce: if the merged notes are still too big, collapse them a level first.
         var merged = notes.joined(separator: "\n\n")
         if merged.count > chunkBudget {
             var second: [String] = []
-            for chunk in chunks(of: merged) { second.append(try await call(chunk, chunkPrompt)) }
+            for chunk in chunks(of: merged) {
+                second.append(try await call(chunk, chunkPrompt, label: "Merging notes…"))
+            }
             merged = second.joined(separator: "\n\n")
         }
-        return try await call(merged, finalPrompt)
+        return try await call(merged, finalPrompt, label: "Finalizing…")
     }
 
     /// Splits `text` into <=`chunkBudget` pieces on line boundaries (transcripts are one turn/line).
@@ -86,6 +107,7 @@ struct TranscriptSummaryView: View {
     let onSave: () -> Void
 
     @State private var running = false
+    @State private var progressText = ""
     @State private var error: String?
 
     var body: some View {
@@ -95,6 +117,9 @@ struct TranscriptSummaryView: View {
                 Text("Summary").font(.geist(size: 14, weight: .semibold)).foregroundStyle(Theme.primaryText)
                 Spacer()
                 if running {
+                    if !progressText.isEmpty {
+                        Text(progressText).font(.geist(size: 11)).foregroundStyle(Theme.secondaryText)
+                    }
                     ProgressView().controlSize(.small)
                 } else {
                     Button(summary.isEmpty ? "Summarize" : "Regenerate") { Task { await run() } }
@@ -124,13 +149,17 @@ struct TranscriptSummaryView: View {
     }
 
     private func run() async {
-        running = true; error = nil
-        defer { running = false }
+        running = true; error = nil; progressText = ""
+        defer { running = false; progressText = "" }
         do {
-            summary = try await TranscriptSummarizer.summarize(transcript)
+            summary = try await TranscriptSummarizer.summarize(transcript) { progressText = $0 }
             onSave()
         } catch SummarizerError.noKey {
             error = "Connect a cloud key in Settings → AI to generate summaries."
+        } catch LLMError.badResponse(let code) {
+            error = code == 429
+                ? "Provider rate limit reached — long meetings need many requests. Wait a minute and press Regenerate, or pick a model with higher limits in Settings → AI."
+                : "Provider error (HTTP \(code)). Check the model and key in Settings → AI, then Regenerate."
         } catch let failure {
             error = "Couldn't generate a summary — \(failure.localizedDescription)"
         }
