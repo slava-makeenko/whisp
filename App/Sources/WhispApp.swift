@@ -205,10 +205,9 @@ struct WhispApp: App {
         conferenceController.modelContainer = container
         _conferenceController = State(initialValue: conferenceController)
 
-        // Drive the notch indicator off the controllers directly (not a window's .onChange), so it
-        // works even when whisp runs in the background with its window closed.
-        notchRecorder.observe(controller)
-        notchRecorder.observe(conference: conferenceController)
+        // Always-on notch pill, driven straight off the controllers (not a window's .onChange), so it
+        // shows even when whisp runs in the background with its window closed.
+        notchRecorder.attach(dictation: controller, conference: conferenceController)
         controller.commandModeEnabled = UserDefaults.standard.bool(forKey: "commandModeEnabled")
     }
 
