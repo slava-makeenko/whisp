@@ -1,6 +1,7 @@
 import Foundation
 import AVFoundation
 import CoreAudio
+import os
 
 public enum ConferenceCaptureError: Error, Sendable {
     case tapCreationFailed(OSStatus)
@@ -42,6 +43,13 @@ public final class ConferenceCapturer: @unchecked Sendable {
     public var maxMicLevel: Float { levelTracker.maxMic }
     public var maxSystemLevel: Float { levelTracker.maxSystem }
 
+    /// Live "mute me": set from the main actor, read on the IO queue every cycle. While `true` the mic
+    /// channel is written as silence (the system/other side keeps recording) — the meeting's other
+    /// participants are still captured; only your own voice is dropped. Reset to `false` each `start`.
+    private let muteLock = OSAllocatedUnfairLock(initialState: false)
+    public var isMuted: Bool { muteLock.withLock { $0 } }
+    public func setMuted(_ muted: Bool) { muteLock.withLock { $0 = muted } }
+
     private var tapID = AudioObjectID(kAudioObjectUnknown)
     private var aggregateID = AudioObjectID(kAudioObjectUnknown)
     private var ioProcID: AudioDeviceIOProcID?
@@ -58,6 +66,7 @@ public final class ConferenceCapturer: @unchecked Sendable {
     public func start(writingTo url: URL) throws {
         guard !isRecording else { return }
         levelTracker.reset()
+        muteLock.withLock { $0 = false }   // every recording starts with the mic live
 
         // 1. System-audio process tap over the whole global mix (excludes nothing).
         let tapDescription = CATapDescription(stereoGlobalTapButExcludeProcesses: [])
@@ -105,9 +114,11 @@ public final class ConferenceCapturer: @unchecked Sendable {
         // 4. IO block: split input channels into mic (L) + system (R) → stereo writer + levels.
         let levelsCont = levelsContinuation
         let tracker = levelTracker
+        let muteLock = self.muteLock
         var proc: AudioDeviceIOProcID?
         let ioStatus = AudioDeviceCreateIOProcIDWithBlock(&proc, agg, ioQueue) { _, inInputData, _, _, _ in
-            Self.splitAndWrite(inInputData, micChannels: micChannels,
+            let muted = muteLock.withLock { $0 }
+            Self.splitAndWrite(inInputData, micChannels: micChannels, muted: muted,
                                writer: writer, levels: levelsCont, tracker: tracker)
         }
         guard ioStatus == noErr, let proc else { cleanup(); throw ConferenceCaptureError.ioProcCreationFailed(ioStatus) }
@@ -150,6 +161,7 @@ public final class ConferenceCapturer: @unchecked Sendable {
     /// (the rest), downmixes each group to one channel, and writes a stereo frame (L = mic, R = system).
     private static func splitAndWrite(_ inInputData: UnsafePointer<AudioBufferList>,
                                       micChannels: Int,
+                                      muted: Bool,
                                       writer: ConferenceRecordingWriter,
                                       levels: AsyncStream<Float>.Continuation,
                                       tracker: LevelTracker) {
@@ -185,6 +197,9 @@ public final class ConferenceCapturer: @unchecked Sendable {
         }
         if micCount > 1 { let inv = 1 / Float(micCount); for i in 0..<frameCount { mic[i] *= inv } }
         if systemCount > 1 { let inv = 1 / Float(systemCount); for i in 0..<frameCount { system[i] *= inv } }
+
+        // Live mute: drop the user's own voice while keeping the system/other side on the recording.
+        if muted { for i in 0..<frameCount { mic[i] = 0 } }
 
         writer.append([mic, system], frames: frameCount)
 

@@ -457,6 +457,11 @@ private struct MenuBarContent: View {
             conference.toggle()
         }
         .disabled(conference.state == .transcribing)
+        if conference.state == .recording {
+            Button(LocalizedStringKey(conference.micMuted ? "Unmute Microphone" : "Mute Microphone")) {
+                conference.toggleMute()
+            }
+        }
         Divider()
         Button("Quit whisp") { NSApplication.shared.terminate(nil) }
             .keyboardShortcut("q")

@@ -17,6 +17,8 @@ final class ConferenceController {
     private(set) var state: State = .idle
     private(set) var level: Float = 0
     private(set) var recordingStartedAt: Date?
+    /// Live "mute me" during a recording — your voice is dropped, the other side keeps recording.
+    private(set) var micMuted = false
 
     @ObservationIgnored var modelContainer: ModelContainer?
     @ObservationIgnored private let capturer = ConferenceCapturer()
@@ -33,6 +35,13 @@ final class ConferenceController {
         }
     }
 
+    /// Mute/unmute your own microphone mid-recording. No-op unless a recording is in progress.
+    func toggleMute() {
+        guard state == .recording else { return }
+        micMuted.toggle()
+        capturer.setMuted(micMuted)
+    }
+
     private func start() {
         guard state == .idle, let dir = try? AppConstants.conferenceRecordingsDirectory() else { return }
         let id = UUID()
@@ -45,6 +54,7 @@ final class ConferenceController {
         recordingID = id
         recordingStartedAt = .now
         sourceApp = NSWorkspace.shared.frontmostApplication
+        micMuted = false
         state = .recording
         // Keep capture alive while another app is focused (App Nap would throttle the IO proc).
         activity = ProcessInfo.processInfo.beginActivity(
@@ -59,6 +69,7 @@ final class ConferenceController {
         capturer.stop()
         levelsTask?.cancel(); levelsTask = nil
         level = 0
+        micMuted = false
         if let activity { ProcessInfo.processInfo.endActivity(activity); self.activity = nil }
         recordingStartedAt = nil
         state = .transcribing
