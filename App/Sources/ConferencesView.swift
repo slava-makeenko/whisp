@@ -2,6 +2,7 @@ import SwiftUI
 import SwiftData
 import AVFoundation
 import AppKit
+import UniformTypeIdentifiers
 import WhispCore
 
 /// The "Conference" sidebar tab: recordings made in Conference Mode, each with its transcript and a
@@ -100,6 +101,9 @@ private struct ConferenceDetail: View {
     @Environment(\.modelContext) private var modelContext
     @State private var isEditingTitle = false
     @State private var isRenamingSpeakers = false
+    /// Speaker names being typed. Kept out of the model until "Done" so the transcript doesn't
+    /// re-label on every keystroke.
+    @State private var draftNames: [String: String] = [:]
     @FocusState private var titleFocused: Bool
 
     var body: some View {
@@ -143,6 +147,9 @@ private struct ConferenceDetail: View {
                         Button(action: copyTranscript) { Image(systemName: "doc.on.doc").font(.geist(size: 13)) }
                             .buttonStyle(.plain).foregroundStyle(Theme.secondaryText).pointingCursor()
                             .help("Copy transcript")
+                        Button(action: saveTranscript) { Image(systemName: "square.and.arrow.down").font(.geist(size: 13)) }
+                            .buttonStyle(.plain).foregroundStyle(Theme.secondaryText).pointingCursor()
+                            .help("Save transcript as Markdown or plain text")
                     }
                     Button(action: onDelete) { Image(systemName: "trash").font(.geist(size: 13)) }
                         .buttonStyle(.plain).foregroundStyle(Theme.secondaryText).pointingCursor()
@@ -187,7 +194,7 @@ private struct ConferenceDetail: View {
                         Image(systemName: "person.crop.circle").font(.geist(size: 13)).foregroundStyle(Theme.accent)
                         Text("Speakers").font(.geist(size: 14, weight: .semibold)).foregroundStyle(Theme.primaryText)
                         Spacer()
-                        Button("Done") { isRenamingSpeakers = false }
+                        Button("Done", action: commitSpeakerNames)
                             .font(.geist(size: 12, weight: .medium)).foregroundStyle(Theme.accent)
                             .buttonStyle(.plain).pointingCursor()
                     }
@@ -210,7 +217,10 @@ private struct ConferenceDetail: View {
                 .background(Theme.cardBG, in: RoundedRectangle(cornerRadius: Theme.Radius.sm, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: Theme.Radius.sm, style: .continuous).stroke(Theme.hairline))
             } else {
-                Button { withAnimation(.easeOut(duration: 0.15)) { isRenamingSpeakers = true } } label: {
+                Button {
+                    draftNames = SpeakerNames.decode(conference.speakerNames)
+                    withAnimation(.easeOut(duration: 0.15)) { isRenamingSpeakers = true }
+                } label: {
                     Label("Rename speakers", systemImage: "person.crop.circle")
                         .font(.geist(size: 12, weight: .medium)).foregroundStyle(Theme.accent)
                 }
@@ -220,15 +230,19 @@ private struct ConferenceDetail: View {
     }
 
     private func nameBinding(for label: String) -> Binding<String> {
-        Binding(
-            get: { SpeakerNames.decode(conference.speakerNames)[label] ?? "" },
-            set: { newValue in
-                var map = SpeakerNames.decode(conference.speakerNames)
-                let trimmed = newValue.trimmingCharacters(in: .whitespaces)
-                if trimmed.isEmpty { map[label] = nil } else { map[label] = trimmed }
-                conference.speakerNames = SpeakerNames.encode(map)
-                try? modelContext.save()
-            })
+        Binding(get: { draftNames[label] ?? "" }, set: { draftNames[label] = $0 })
+    }
+
+    /// Applies the typed names to the transcript and closes the form.
+    private func commitSpeakerNames() {
+        var map: [String: String] = [:]
+        for (label, name) in draftNames {
+            let trimmed = name.trimmingCharacters(in: .whitespaces)
+            if !trimmed.isEmpty { map[label] = trimmed }
+        }
+        conference.speakerNames = SpeakerNames.encode(map)
+        try? modelContext.save()
+        withAnimation(.easeOut(duration: 0.15)) { isRenamingSpeakers = false }
     }
 
     private func commitTitle() {
@@ -243,9 +257,71 @@ private struct ConferenceDetail: View {
         return minutes > 0 ? "\(minutes) min \(seconds) s" : "\(seconds) s"
     }
 
+    /// Copies what the .txt export writes: the record's current title, its metadata, and the
+    /// transcript with the speaker names as renamed.
     private func copyTranscript() {
         NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(conference.transcript, forType: .string)
+        NSPasteboard.general.setString(plainTextExport, forType: .string)
+    }
+
+    /// Saves the transcript to disk. The save panel offers Markdown and plain text; the extension of
+    /// the chosen file decides how it's rendered. Speakers are written with their custom names, so the
+    /// file matches what's on screen.
+    private func saveTranscript() {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [UTType(filenameExtension: "md") ?? .plainText, .plainText]
+        panel.title = "Save Transcript"
+        panel.prompt = "Save"
+        panel.nameFieldLabel = "Save as:"
+        panel.canCreateDirectories = true
+        // Pre-filled with the record's current title — editable, so the file can be named anything.
+        panel.nameFieldStringValue = Self.exportFileName(conference.title) + ".md"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        let text = url.pathExtension.lowercased() == "txt" ? plainTextExport : markdownExport
+        try? text.write(to: url, atomically: true, encoding: .utf8)
+    }
+
+    private var markdownExport: String {
+        let names = SpeakerNames.decode(conference.speakerNames)
+        var out = ["# \(conference.title.isEmpty ? "Conference" : conference.title)", "", metaLine]
+        if !conference.summary.isEmpty { out += ["", "## Summary", "", conference.summary] }
+        out += ["", "## Transcript", ""]
+        for line in conference.transcript.split(separator: "\n").map(String.init) {
+            if let turn = SpeakerNames.speakerLine(line) {
+                out.append("**\(names[turn.speaker] ?? turn.speaker):** \(turn.text)")
+            } else {
+                out.append(line)
+            }
+            out.append("")   // blank line between turns so Markdown keeps them apart
+        }
+        return out.joined(separator: "\n")
+    }
+
+    private var plainTextExport: String {
+        let names = SpeakerNames.decode(conference.speakerNames)
+        var out = [conference.title.isEmpty ? "Conference" : conference.title, metaLine]
+        if !conference.summary.isEmpty { out += ["", "Summary", "-------", conference.summary] }
+        out += ["", "Transcript", "----------"]
+        for line in conference.transcript.split(separator: "\n").map(String.init) {
+            if let turn = SpeakerNames.speakerLine(line) {
+                out.append("\(names[turn.speaker] ?? turn.speaker): \(turn.text)")
+            } else {
+                out.append(line)
+            }
+        }
+        return out.joined(separator: "\n") + "\n"
+    }
+
+    private var metaLine: String {
+        let date = conference.createdAt.formatted(date: .abbreviated, time: .shortened)
+        return conference.durationMs > 0 ? "\(date) · \(durationText)" : date
+    }
+
+    /// Finder-safe base name: the title minus the separators macOS mangles in file names.
+    private static func exportFileName(_ title: String) -> String {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let base = trimmed.isEmpty ? "Conference" : trimmed
+        return base.components(separatedBy: CharacterSet(charactersIn: "/:\\")).joined(separator: "-")
     }
 }
 
@@ -281,13 +357,8 @@ private struct DiarizedTranscript: View {
 
     private var lines: [String] { text.split(separator: "\n").map(String.init) }
 
-    /// A "Speaker: text" line — any speaker label ("Я", "Собеседник 1", …), not a fixed set.
     private static func parse(_ line: String) -> (speaker: String, text: String)? {
-        guard let range = line.range(of: ": "), range.lowerBound != line.startIndex else { return nil }
-        let speaker = String(line[line.startIndex..<range.lowerBound])
-        // Guard against false positives (a colon deep in a sentence): labels are short.
-        guard speaker.count <= 20, !speaker.contains(".") else { return nil }
-        return (speaker, String(line[range.upperBound...]))
+        SpeakerNames.speakerLine(line)
     }
 
     /// "Я" is the accent; each remote speaker gets a stable colour so participants are easy to tell apart.
@@ -360,13 +431,21 @@ private struct ConferenceAudioPlayer: View {
 /// Speaker-name helpers for diarized conferences: distinct labels in a transcript + the persisted
 /// label→name map (stored as JSON on `Conference.speakerNames`).
 enum SpeakerNames {
+    /// A "Speaker: text" line — any speaker label ("Я", "Собеседник 1", …), not a fixed set. The one
+    /// parser shared by the transcript view and the file export, so both label lines identically.
+    static func speakerLine(_ line: some StringProtocol) -> (speaker: String, text: String)? {
+        guard let range = line.range(of: ": "), range.lowerBound != line.startIndex else { return nil }
+        let speaker = String(line[line.startIndex..<range.lowerBound])
+        // Guard against false positives (a colon deep in a sentence): labels are short.
+        guard speaker.count <= 20, !speaker.contains(".") else { return nil }
+        return (speaker, String(line[range.upperBound...]))
+    }
+
     /// Distinct "Speaker:" labels in order of first appearance ("Я", "Собеседник 1", …).
     static func labels(in transcript: String) -> [String] {
         var seen = Set<String>(), ordered: [String] = []
         for line in transcript.split(separator: "\n") {
-            guard let range = line.range(of: ": "), range.lowerBound != line.startIndex else { continue }
-            let label = String(line[line.startIndex..<range.lowerBound])
-            guard label.count <= 20, !label.contains(".") else { continue }
+            guard let label = speakerLine(line)?.speaker else { continue }
             if seen.insert(label).inserted { ordered.append(label) }
         }
         return ordered
